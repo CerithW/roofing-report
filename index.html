@@ -1,11 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>J Randall Roofing — Monthly Project Reports</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js" integrity="sha384-P7KKlGD3Ng66Ds7oTliLzTnol6DbK+k7PafNYXIBDQ4b5eFWtmqctplDVOxslglR" crossorigin="anonymous"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:40px 20px}
@@ -15,6 +15,10 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .header p{color:#6B7280;margin-top:8px;font-size:13px}
 .card{background:#23272F;border-radius:14px;padding:32px;width:100%;max-width:780px;border:1px solid #2E3340;box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .section-label{font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
+.mode-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#1A1D23;border:1px solid #2E3340;border-radius:10px;padding:6px;margin-bottom:26px}
+.mode-btn{padding:11px;background:none;border:none;border-radius:7px;color:#6B7280;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.2px}
+.mode-btn.active{background:#0E93C0;color:#fff}
+.mode-btn:hover:not(.active){color:#E8EAF0}
 .upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px}
 .upload-area{border:2px dashed #2E3340;border-radius:10px;padding:26px 16px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
 .upload-area:hover,.upload-area.drag-over{border-color:#0E93C0;background:rgba(14,147,192,.06)}
@@ -26,11 +30,14 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .upload-filename{font-size:11px;color:#22C55E;margin-top:10px;word-break:break-all;min-height:16px}
 .date-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:26px}
 .field-group label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
-.field-group input{width:100%;background:#1A1D23;border:1px solid #2E3340;border-radius:7px;padding:10px 14px;color:#E8EAF0;font-size:14px;outline:none;transition:border-color .2s}
-.field-group input:focus{border-color:#0E93C0}
+.field-group input,.field-group select{width:100%;background:#1A1D23;border:1px solid #2E3340;border-radius:7px;padding:10px 14px;color:#E8EAF0;font-size:14px;outline:none;transition:border-color .2s}
+.field-group input:focus,.field-group select:focus{border-color:#0E93C0}
 .generate-btn{width:100%;padding:14px;background:#0E93C0;color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s;letter-spacing:.3px}
 .generate-btn:hover:not(:disabled){background:#0A7BA3}
 .generate-btn:disabled{opacity:.45;cursor:not-allowed}
+.connect-btn{width:100%;padding:16px;background:#13B5EA;color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s;letter-spacing:.3px}
+.connect-btn:hover:not(:disabled){background:#0F9ACC}
+.connect-btn:disabled{opacity:.45;cursor:not-allowed}
 .progress{margin-top:22px;display:none}
 .progress-bar-bg{height:5px;background:#2E3340;border-radius:3px;overflow:hidden;margin-bottom:10px}
 .progress-bar-fill{height:100%;background:linear-gradient(90deg,#0E93C0,#22C55E);border-radius:3px;transition:width .3s}
@@ -45,91 +52,438 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .mgr-btn:hover{opacity:.8}
 .result-sub{margin-top:14px;font-size:11px;color:#4B5563;text-align:center}
 .error-msg{margin-top:16px;padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:7px;color:#F87171;font-size:13px;display:none;line-height:1.5}
+.info-msg{margin-top:16px;padding:12px 16px;background:rgba(14,147,192,.08);border:1px solid rgba(14,147,192,.25);border-radius:7px;color:#7DC9E8;font-size:13px;display:none;line-height:1.5}
 .divider{height:1px;background:#2E3340;margin:24px 0}
+.conn-bar{display:flex;align-items:center;justify-content:space-between;background:#1A1D23;border:1px solid #2E3340;border-radius:8px;padding:11px 16px;margin-bottom:22px;gap:12px}
+.conn-org{font-size:13px;font-weight:600;color:#22C55E}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:#22C55E;margin-right:8px;display:inline-block;flex-shrink:0}
+.conn-left{display:flex;align-items:center;min-width:0}
+.disc-btn{background:none;border:none;color:#4B5563;font-size:11px;cursor:pointer;text-decoration:underline;flex-shrink:0}
+.disc-btn:hover{color:#F87171}
+.org-select{background:#23272F;border:1px solid #2E3340;border-radius:6px;color:#E8EAF0;font-size:12px;padding:5px 8px;outline:none}
+.xero-hero{text-align:center;padding:16px 0 10px}
+.xero-icon{font-size:50px;margin-bottom:16px}
+.xero-title{font-size:16px;font-weight:700;color:#E8EAF0;margin-bottom:10px}
+.xero-sub{font-size:13px;color:#6B7280;margin-bottom:26px;line-height:1.7}
 </style>
 </head>
 <body>
 <div class="header">
-  <h1>J Randall Roofing <span>— Monthly Project Reports</span></h1>
-  <p>Upload your Xero exports to generate a formatted Excel workbook with per-job detail and manager summary</p>
+  <h1>J Randall Roofing <span>&#8212; Monthly Project Reports</span></h1>
+  <p>Pull live data from Xero (or upload exports) to generate formatted Excel reports with per-job detail and manager summary</p>
 </div>
 <div class="card">
-  <div class="section-label">Upload Files</div>
-  <div class="upload-grid">
-    <div class="upload-area" id="jobDetailArea">
-      <input type="file" id="jobDetailFile" accept=".xlsx,.xls,.csv">
-      <div class="upload-icon">&#128209;</div>
-      <div class="upload-label">Job Detail</div>
-      <div class="upload-sub">Xero Account Transactions export (.xlsx)</div>
-      <div class="upload-filename" id="jobDetailName">No file selected</div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="modeXeroBtn" onclick="setMode('xero')">&#9889; Connect to Xero</button>
+    <button class="mode-btn" id="modeFilesBtn" onclick="setMode('files')">&#128193; Upload Files</button>
+  </div>
+
+  <div id="xeroSection">
+    <div id="screenConnect">
+      <div class="xero-hero">
+        <div class="xero-icon">&#128279;</div>
+        <div class="xero-title">Connect to Xero</div>
+        <div class="xero-sub">Sign in once and pull live data directly from Xero.<br>No file exports needed &#8212; just pick a date range and generate.</div>
+        <button class="connect-btn" id="connectBtn" onclick="connectXero()">Sign in with Xero &#8594;</button>
+      </div>
     </div>
-    <div class="upload-area" id="managerPLArea">
-      <input type="file" id="managerPLFile" accept=".xlsx,.xls,.csv">
-      <div class="upload-icon">&#128202;</div>
-      <div class="upload-label">Manager P&amp;L</div>
-      <div class="upload-sub">Xero Profit and Loss export (.xlsx)</div>
-      <div class="upload-filename" id="managerPLName">No file selected</div>
+    <div id="screenConnected" style="display:none">
+      <div class="conn-bar">
+        <div class="conn-left"><span class="conn-dot"></span><span class="conn-org" id="orgName">Xero</span></div>
+        <select class="org-select" id="orgSelect" style="display:none" onchange="switchOrg()"></select>
+        <button class="disc-btn" onclick="disconnectXero()">Disconnect</button>
+      </div>
     </div>
   </div>
-  <div class="divider"></div>
-  <div class="section-label" style="margin-bottom:14px">Report Period</div>
-  <div class="date-row">
-    <div class="field-group"><label>From</label><input type="date" id="dateFrom"></div>
-    <div class="field-group"><label>To</label><input type="date" id="dateTo"></div>
+
+  <div id="filesSection" style="display:none">
+    <div class="section-label">Upload Files</div>
+    <div class="upload-grid">
+      <div class="upload-area" id="jobDetailArea">
+        <input type="file" id="jobDetailFile" accept=".xlsx,.xls,.csv">
+        <div class="upload-icon">&#128209;</div>
+        <div class="upload-label">Job Detail</div>
+        <div class="upload-sub">Xero Account Transactions export (.xlsx)</div>
+        <div class="upload-filename" id="jobDetailName">No file selected</div>
+      </div>
+      <div class="upload-area" id="managerPLArea">
+        <input type="file" id="managerPLFile" accept=".xlsx,.xls,.csv">
+        <div class="upload-icon">&#128202;</div>
+        <div class="upload-label">Manager P&amp;L</div>
+        <div class="upload-sub">Xero Profit and Loss export (.xlsx)</div>
+        <div class="upload-filename" id="managerPLName">No file selected</div>
+      </div>
+    </div>
   </div>
-  <button class="generate-btn" id="generateBtn" onclick="generateReport()">Generate Report</button>
+
+  <div id="controlsSection" style="display:none">
+    <div class="divider"></div>
+    <div class="section-label">Report Period</div>
+    <div class="date-row">
+      <div class="field-group"><label>From</label><input type="date" id="dateFrom"></div>
+      <div class="field-group"><label>To</label><input type="date" id="dateTo"></div>
+    </div>
+    <button class="generate-btn" id="generateBtn" onclick="generateReport()">Generate Report</button>
+  </div>
+
   <div class="progress" id="progressArea">
     <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar" style="width:0%"></div></div>
     <div class="progress-text" id="progressText">Initialising...</div>
   </div>
   <div class="result" id="resultArea">
-    <div class="result-group-label">&#128193; Directors &mdash; Full Report</div>
+    <div class="result-group-label">&#128193; Directors &#8212; Full Report</div>
     <a class="download-btn" id="downloadLink" href="#" download="JRandallRoofing_Report.xlsx">&#11015; Download Full Report</a>
     <div class="result-divider"></div>
     <div class="result-group-label">&#128100; Individual Manager Reports</div>
     <div class="manager-downloads" id="managerDownloads"></div>
-    <p class="result-sub">Each manager report contains only their own jobs &mdash; ready to send directly to the individual</p>
+    <p class="result-sub">Each manager report contains only their own jobs &#8212; ready to send directly to the individual</p>
   </div>
+  <div class="info-msg" id="infoMsg"></div>
   <div class="error-msg" id="errorMsg"></div>
 </div>
 <script>
-const MANAGER_ORDER = ['Greg','Steff','Tyler','Shella','Jake','Charlotte','Unassigned'];
-const MC = {
-  Greg:       {dark:'0A3D5C', light:'D6EAF8', sub:'1B6494', btn:'#0A3D5C'},
-  Steff:      {dark:'3B1F6B', light:'E8E0F5', sub:'6A3AB0', btn:'#3B1F6B'},
-  Tyler:      {dark:'1A5C3A', light:'D5F0E4', sub:'2E9962', btn:'#1A5C3A'},
-  Shella:     {dark:'7A2D00', light:'F5E0CF', sub:'B84800', btn:'#7A2D00'},
-  Jake:       {dark:'4A3000', light:'F5EDD0', sub:'7A5000', btn:'#4A3000'},
-  Charlotte:  {dark:'1A3A5C', light:'D0E3F5', sub:'2E6494', btn:'#1A3A5C'},
-  Unassigned: {dark:'444444', light:'EBEBEB', sub:'666666', btn:'#444444'}
-};
-const INCOME_KEYWORDS = ['flat felt roofing','unconfirmed valuations'];
+'use strict';
 
+// ══════════════════════════════ CONFIG ══════════════════════════════
+// PROXY_BASE: the Cloudflare Worker that proxies Xero API calls (Xero
+// does not allow direct browser access). Set after deploying worker.js.
+const PROXY_BASE='REPLACE_WITH_WORKER_URL';
+const CLIENT_ID='B80063E80ADB43239F79951FCCF14DD5';
+const REDIRECT_URI='https://cerithw.github.io/roofing-report/';
+const XERO_AUTH='https://login.xero.com/identity/connect/authorize';
+const SCOPES='openid profile email offline_access accounting.reports.read accounting.journals.read accounting.settings.read';
+const PROJECT_CATEGORY='Project';
+const MANAGER_CATEGORY='Manager';
+
+const MANAGER_ORDER=['Greg','Steff','Tyler','Shella','Jake','Charlotte','Unassigned'];
+const MC={
+  Greg:      {dark:'0A3D5C',light:'D6EAF8',sub:'1B6494',btn:'#0A3D5C'},
+  Steff:     {dark:'3B1F6B',light:'E8E0F5',sub:'6A3AB0',btn:'#3B1F6B'},
+  Tyler:     {dark:'1A5C3A',light:'D5F0E4',sub:'2E9962',btn:'#1A5C3A'},
+  Shella:    {dark:'7A2D00',light:'F5E0CF',sub:'B84800',btn:'#7A2D00'},
+  Jake:      {dark:'4A3000',light:'F5EDD0',sub:'7A5000',btn:'#4A3000'},
+  Charlotte: {dark:'1A3A5C',light:'D0E3F5',sub:'2E6494',btn:'#1A3A5C'},
+  Unassigned:{dark:'444444',light:'EBEBEB',sub:'666666',btn:'#444444'}
+};
+const INCOME_KEYWORDS=['flat felt roofing','unconfirmed valuations'];
+// P&L account types in Xero journals — only these lines belong on a job report
+const PNL_ACCOUNT_TYPES=new Set(['REVENUE','SALES','OTHERINCOME','DIRECTCOSTS','EXPENSE','OVERHEADS','OTHEREXPENSE','DEPRECIATN']);
+const SOURCE_LABELS={ACCREC:'Receivable Invoice',ACCPAY:'Payable Invoice',ACCRECCREDIT:'Receivable Credit Note',ACCPAYCREDIT:'Payable Credit Note',ACCRECPAYMENT:'Receivable Payment',ACCPAYPAYMENT:'Payable Payment',ARCREDITPAYMENT:'Receivable Credit Payment',APCREDITPAYMENT:'Payable Credit Payment',CASHREC:'Receive Money',CASHPAID:'Spend Money',TRANSFER:'Bank Transfer',ARPREPAYMENT:'Receivable Prepayment',APPREPAYMENT:'Payable Prepayment',AROVERPAYMENT:'Receivable Overpayment',APOVERPAYMENT:'Payable Overpayment',EXPCLAIM:'Expense Claim',EXPPAYMENT:'Expense Payment',MANJOURNAL:'Manual Journal',PAYSLIP:'Payslip',WAGEPAYABLE:'Payroll Payable',INTEGRATEDPAYROLLPE:'Payroll Expense',INTEGRATEDPAYROLLPT:'Payroll Payment'};
+
+let currentMode='xero';
+
+// ══════════════════════════════ UI HELPERS ══════════════════════════════
 function setProgress(pct,text){document.getElementById('progressBar').style.width=pct+'%';document.getElementById('progressText').textContent=text;}
 function showError(msg){const el=document.getElementById('errorMsg');el.innerHTML=msg;el.style.display='block';}
 function hideError(){document.getElementById('errorMsg').style.display='none';}
-function readAsArrayBuffer(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(file);});}
-function isIncome(account){const a=(account||'').toLowerCase().trim();return INCOME_KEYWORDS.some(k=>a.includes(k));}
-function parseNum(v){if(v===null||v===undefined||v==='')return 0;if(typeof v==='number')return isNaN(v)?0:v;let s=String(v).trim();if(s.startsWith('(')&&s.endsWith(')'))s='-'+s.slice(1,-1);s=s.replace(/[,£$\s]/g,'');const n=parseFloat(s);return isNaN(n)?0:n;}
-function sanitizeTabName(name){return name.replace(/[\\\/\?\*\[\]\:']/g,' ').replace(/\s+/g,' ').trim().substring(0,31);}
-function fmtDateGB(v){if(!v)return '';if(v instanceof Date)return v.toLocaleDateString('en-GB');if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return d.toLocaleDateString('en-GB');}return String(v);}
-function fmtDateDisplay(dateStr){if(!dateStr)return '';const d=new Date(dateStr+'T12:00:00');return d.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});}
-function normaliseManager(name){if(!name)return 'Unassigned';const lower=name.trim().toLowerCase();return MANAGER_ORDER.find(m=>m.toLowerCase()===lower)||'Unassigned';}
-function getDominantManager(txns){if(!txns||txns.length===0)return 'Unassigned';const counts={};for(const t of txns){const m=normaliseManager(t.manager);counts[m]=(counts[m]||0)+1;}return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];}
-function calcTotals(txns){let income=0,expenses=0;for(const t of txns){if(isIncome(t.account))income+=(t.credit-t.debit);else expenses+=(t.debit-t.credit);}return{income,expenses,net:income-expenses};}
-function isCF(name){return name.trim().toUpperCase().startsWith('CF');}
-function makeFilename(parts,suffix){return['JRandallRoofing',...parts,suffix].filter(Boolean).join('_')+'.xlsx';}
-function blobUrl(buffer){return URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));}
+function showInfo(msg){const el=document.getElementById('infoMsg');el.innerHTML=msg;el.style.display='block';}
+function hideInfo(){document.getElementById('infoMsg').style.display='none';}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-['jobDetail','managerPL'].forEach(id=>{
-  const input=document.getElementById(id+'File');
-  const area=document.getElementById(id+'Area');
-  const name=document.getElementById(id+'Name');
-  input.addEventListener('change',()=>{if(input.files[0]){name.textContent=input.files[0].name;area.classList.add('has-file');}});
-  area.addEventListener('dragover',e=>{e.preventDefault();area.classList.add('drag-over');});
-  area.addEventListener('dragleave',()=>area.classList.remove('drag-over'));
-  area.addEventListener('drop',e=>{e.preventDefault();area.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f){try{const dt=new DataTransfer();dt.items.add(f);input.files=dt.files;}catch(_){}name.textContent=f.name;area.classList.add('has-file');}});
-});
+function setMode(mode){
+  currentMode=mode;hideError();hideInfo();
+  document.getElementById('modeXeroBtn').classList.toggle('active',mode==='xero');
+  document.getElementById('modeFilesBtn').classList.toggle('active',mode==='files');
+  document.getElementById('xeroSection').style.display=mode==='xero'?'':'none';
+  document.getElementById('filesSection').style.display=mode==='files'?'':'none';
+  updateControls();
+}
+
+function updateControls(){
+  const connected=!!localStorage.getItem('xero_at');
+  if(currentMode==='xero'){
+    document.getElementById('screenConnect').style.display=connected?'none':'';
+    document.getElementById('screenConnected').style.display=connected?'':'none';
+    document.getElementById('controlsSection').style.display=connected?'':'none';
+    document.getElementById('generateBtn').textContent='⚡ Generate Report from Xero';
+    if(connected){
+      const org=localStorage.getItem('xero_org');
+      if(org)document.getElementById('orgName').textContent=org;
+      renderOrgSelect();
+    }
+    if(!connected&&window.location.protocol==='file:'){
+      document.getElementById('connectBtn').disabled=true;
+      showInfo('Xero connection only works on the hosted page: <strong>https://cerithw.github.io/roofing-report/</strong><br>Use the Upload Files tab here, or open the hosted page to connect.');
+    }else if(!connected&&PROXY_BASE.indexOf('REPLACE')===0){
+      document.getElementById('connectBtn').disabled=true;
+      showInfo('Xero connection is not set up yet &#8212; the proxy worker URL has not been configured. Use the Upload Files tab for now.');
+    }
+  }else{
+    document.getElementById('controlsSection').style.display='';
+    document.getElementById('generateBtn').textContent='Generate Report';
+  }
+}
+
+function renderOrgSelect(){
+  const sel=document.getElementById('orgSelect');
+  let conns=[];
+  try{conns=JSON.parse(localStorage.getItem('xero_conns')||'[]');}catch(_){conns=[];}
+  if(conns.length>1){
+    sel.style.display='';sel.innerHTML='';
+    const current=localStorage.getItem('xero_tenant');
+    for(const c of conns){
+      const o=document.createElement('option');o.value=c.tenantId;o.textContent=c.tenantName;
+      if(c.tenantId===current)o.selected=true;
+      sel.appendChild(o);
+    }
+  }else{sel.style.display='none';}
+}
+
+function switchOrg(){
+  const sel=document.getElementById('orgSelect');
+  let conns=[];
+  try{conns=JSON.parse(localStorage.getItem('xero_conns')||'[]');}catch(_){conns=[];}
+  const c=conns.find(x=>x.tenantId===sel.value);
+  if(c){localStorage.setItem('xero_tenant',c.tenantId);localStorage.setItem('xero_org',c.tenantName);document.getElementById('orgName').textContent=c.tenantName;}
+}
+
+// ══════════════════════════════ XERO OAUTH ══════════════════════════════
+function randToken(){const a=new Uint8Array(24);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');}
+
+async function connectXero(){
+  const state=randToken();
+  const verifier=randToken()+randToken(); // 96 chars, PKCE requires >=43
+  localStorage.setItem('xero_state',state);
+  localStorage.setItem('xero_pkce',verifier);
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));
+  const challenge=btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const p=new URLSearchParams({response_type:'code',client_id:CLIENT_ID,redirect_uri:REDIRECT_URI,scope:SCOPES,state:state,code_challenge:challenge,code_challenge_method:'S256'});
+  window.location.href=XERO_AUTH+'?'+p.toString();
+}
+
+function saveTokens(t){
+  localStorage.setItem('xero_at',t.access_token);
+  if(t.refresh_token)localStorage.setItem('xero_rt',t.refresh_token);
+  localStorage.setItem('xero_exp',String(Date.now()+(t.expires_in-60)*1000));
+}
+
+async function tokenRequest(fields){
+  const body=new URLSearchParams(fields);
+  const res=await fetch(PROXY_BASE+'/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()});
+  const text=await res.text();
+  if(!res.ok)throw new Error('Token request failed ('+res.status+'): '+text.substring(0,300));
+  return JSON.parse(text);
+}
+
+async function handleCallback(code,state){
+  if(!state||state!==localStorage.getItem('xero_state'))throw new Error('Sign-in state mismatch — please try connecting again.');
+  localStorage.removeItem('xero_state');
+  const t=await tokenRequest({grant_type:'authorization_code',code:code,redirect_uri:REDIRECT_URI,code_verifier:localStorage.getItem('xero_pkce')||''});
+  localStorage.removeItem('xero_pkce');
+  saveTokens(t);
+}
+
+let refreshPromise=null;
+async function getToken(){
+  if(Date.now()<Number(localStorage.getItem('xero_exp')||0))return localStorage.getItem('xero_at');
+  if(refreshPromise)return refreshPromise;
+  refreshPromise=(async()=>{
+    try{
+      const rt=localStorage.getItem('xero_rt');
+      if(!rt){disconnectXero();throw new Error('Session expired — please reconnect to Xero.');}
+      let t;
+      try{t=await tokenRequest({grant_type:'refresh_token',refresh_token:rt});}
+      catch(e){disconnectXero();throw new Error('Session expired — please reconnect to Xero.');}
+      saveTokens(t);return t.access_token;
+    }finally{refreshPromise=null;}
+  })();
+  return refreshPromise;
+}
+
+function disconnectXero(){
+  // Best-effort revocation at Xero; local sign-out must succeed regardless
+  const rt=localStorage.getItem('xero_rt');
+  if(rt&&PROXY_BASE.indexOf('REPLACE')!==0){
+    fetch(PROXY_BASE+'/revoke',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:rt}).toString()}).catch(()=>{});
+  }
+  ['xero_at','xero_rt','xero_exp','xero_tenant','xero_org','xero_conns','xero_state','xero_pkce'].forEach(k=>localStorage.removeItem(k));
+  document.getElementById('resultArea').style.display='none';
+  document.getElementById('progressArea').style.display='none';
+  hideError();updateControls();
+}
+
+// ══════════════════════════════ XERO API ══════════════════════════════
+async function xeroGet(path,tenantId,attempt,authAttempt){
+  attempt=attempt||0;authAttempt=authAttempt||0;
+  const token=await getToken();
+  const res=await fetch(PROXY_BASE+'/api'+path,{headers:{'Authorization':'Bearer '+token,'Xero-Tenant-Id':tenantId}});
+  if(res.status===429&&attempt<4){
+    const ra=Number(res.headers.get('Retry-After')||5);
+    await sleep((ra+1)*1000);
+    return xeroGet(path,tenantId,attempt+1,authAttempt);
+  }
+  if(res.status===401&&authAttempt<1){localStorage.setItem('xero_exp','0');return xeroGet(path,tenantId,attempt,authAttempt+1);}
+  if(!res.ok)throw new Error('Xero API error ('+res.status+'): '+(await res.text()).substring(0,300));
+  return res.json();
+}
+
+async function getConnections(){
+  const token=await getToken();
+  const res=await fetch(PROXY_BASE+'/connections',{headers:{'Authorization':'Bearer '+token}});
+  if(!res.ok)throw new Error('Could not fetch Xero connections ('+res.status+').');
+  return res.json();
+}
+
+function parseXeroDate(s){
+  if(!s)return null;
+  if(s instanceof Date)return s;
+  const m=/\/Date\((-?\d+)/.exec(String(s));
+  if(m)return new Date(Number(m[1]));
+  const d=new Date(s);
+  return isNaN(d)?null:d;
+}
+function ymdUTC(d){return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');}
+function fmtUTCDateGB(d){return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();}
+
+// Xero Journals paging: 100 per call, offset = highest JournalNumber already
+// seen. Journal DATES are not in journal-number order (backdated entries), so
+// the full journal list must be scanned and filtered client-side.
+async function fetchJournals(tenantId,fromDate,toDate){
+  const journals=[];let offset=0,scanned=0,batches=0;
+  while(true){
+    const data=await xeroGet('/Journals?offset='+offset,tenantId);
+    const batch=data.Journals||[];
+    if(batch.length===0)break;
+    batches++;scanned+=batch.length;
+    for(const j of batch){
+      const d=parseXeroDate(j.JournalDate);
+      if(!d)continue;
+      const ymd=ymdUTC(d);
+      if(ymd>=fromDate&&ymd<=toDate)journals.push(j);
+    }
+    offset=batch[batch.length-1].JournalNumber;
+    setProgress(Math.min(42,12+batches),'Scanning Xero journals... '+scanned+' scanned, '+journals.length+' in period');
+    if(batch.length<100)break;
+    await sleep(1100); // stay under Xero's 60 calls/min rate limit
+  }
+  return journals;
+}
+
+function transformJournals(journals){
+  const jobMap={};
+  for(const j of journals){
+    const d=parseXeroDate(j.JournalDate);
+    const dateStr=d?fmtUTCDateGB(d):'';
+    const sortKey=d?d.getTime():0;
+    const source=SOURCE_LABELS[j.SourceType]||j.SourceType||'';
+    for(const line of(j.JournalLines||[])){
+      if(!PNL_ACCOUNT_TYPES.has(line.AccountType))continue;
+      const tracking=line.TrackingCategories||[];
+      const proj=tracking.find(t=>t.Name===PROJECT_CATEGORY);
+      if(!proj||!proj.Option)continue;
+      const projName=String(proj.Option).trim();
+      const mgrT=tracking.find(t=>t.Name===MANAGER_CATEGORY);
+      const mgrName=mgrT&&mgrT.Option?String(mgrT.Option).trim():'';
+      const net=Number(line.NetAmount)||0;
+      if(!jobMap[projName])jobMap[projName]=[];
+      jobMap[projName].push({
+        date:dateStr,_sort:sortKey,source:source,
+        description:String(line.Description||j.Reference||'').trim(),
+        reference:String(j.Reference||'').trim(),
+        debit:net>0?net:0,credit:net<0?-net:0,
+        account:String(line.AccountName||'').trim(),
+        manager:mgrName
+      });
+    }
+  }
+  const jobsByManager={};MANAGER_ORDER.forEach(m=>jobsByManager[m]=[]);
+  const usedTabs=new Set(['\u{1F4CA} profit summary']);const jobList=[];
+  const names=Object.keys(jobMap).sort((a,b)=>a.localeCompare(b));
+  for(const name of names){
+    const txns=jobMap[name];
+    if(txns.length===0)continue;
+    txns.sort((a,b)=>a._sort-b._sort);
+    const mgr=getDominantManager(txns);const totals=calcTotals(txns);
+    let base=sanitizeTabName(name),tab=base,n=1;
+    while(usedTabs.has(tab.toLowerCase())){tab=sanitizeTabName(base.substring(0,28)+' '+n);n++;}
+    usedTabs.add(tab.toLowerCase());
+    const entry={name:name,tabName:tab,transactions:txns,manager:mgr,totals:totals};
+    jobsByManager[mgr].push(entry);jobList.push(entry);
+  }
+  return{jobsByManager:jobsByManager,jobList:jobList};
+}
+
+function pnlAmt(cell){if(!cell)return 0;const n=parseFloat(String(cell.Value===undefined||cell.Value===null?'':cell.Value).replace(/,/g,''));return isNaN(n)?0:n;}
+function isPnlIncomeTitle(title){return title.indexOf('income')!==-1||title.indexOf('revenue')!==-1||title.indexOf('turnover')!==-1;}
+
+// The tracking-category P&L from the API has one column per tracking OPTION
+// only — no 'Unassigned' and no 'Total' column. Untracked amounts (overheads
+// etc.) are computed as overall-P&L minus the sum of the option columns, and
+// any option not in MANAGER_ORDER folds into Unassigned via normaliseManager
+// (consistent with how those managers' jobs are bucketed).
+function parseApiPnL(data,overall){
+  const result={};MANAGER_ORDER.forEach(m=>result[m]={income:0,costs:0,net:0});
+  const report=(data.Reports||[])[0];if(!report)return result;
+  const rows=report.Rows||[];
+  const hdr=rows.find(r=>r.RowType==='Header');if(!hdr)return result;
+  const headers=(hdr.Cells||[]).map(c=>String(c.Value||'').trim());
+  const colMgr={};
+  headers.forEach((h,i)=>{if(i===0||!h||h.toLowerCase()==='total')return;colMgr[i]=normaliseManager(h);});
+  for(const section of rows){
+    if(section.RowType!=='Section')continue;
+    const title=String(section.Title||'').toLowerCase();
+    if(!title)continue; // untitled sections are Gross/Net profit computed lines
+    const sumRow=(section.Rows||[]).find(r=>r.RowType==='SummaryRow');
+    if(!sumRow)continue;
+    const cells=sumRow.Cells||[];
+    const isIncomeSection=isPnlIncomeTitle(title);
+    for(const i in colMgr){
+      const m=colMgr[i];const v=pnlAmt(cells[i]);
+      if(isIncomeSection)result[m].income+=v;
+      else result[m].costs+=v;
+    }
+  }
+  if(overall){
+    const sumInc=MANAGER_ORDER.reduce((s,m)=>s+result[m].income,0);
+    const sumCost=MANAGER_ORDER.reduce((s,m)=>s+result[m].costs,0);
+    result.Unassigned.income+=overall.income-sumInc;
+    result.Unassigned.costs+=overall.costs-sumCost;
+  }
+  MANAGER_ORDER.forEach(m=>result[m].net=result[m].income-result[m].costs);
+  return result;
+}
+
+function parseApiPnLTotals(data){
+  const out={income:0,costs:0};
+  const report=(data.Reports||[])[0];if(!report)return out;
+  for(const section of(report.Rows||[])){
+    if(section.RowType!=='Section')continue;
+    const title=String(section.Title||'').toLowerCase();if(!title)continue;
+    const sumRow=(section.Rows||[]).find(r=>r.RowType==='SummaryRow');if(!sumRow)continue;
+    const v=pnlAmt((sumRow.Cells||[])[1]);
+    if(isPnlIncomeTitle(title))out.income+=v;
+    else out.costs+=v;
+  }
+  return out;
+}
+
+async function gatherFromXero(dateFrom,dateTo){
+  const tenantId=localStorage.getItem('xero_tenant');
+  if(!tenantId)throw new Error('Not connected to a Xero organisation. Please disconnect and sign in again.');
+  setProgress(4,'Checking tracking categories...');
+  const catData=await xeroGet('/TrackingCategories',tenantId);
+  const cats=catData.TrackingCategories||[];
+  if(!cats.some(c=>c.Name===PROJECT_CATEGORY))throw new Error('No tracking category named "'+PROJECT_CATEGORY+'" found in this Xero organisation.');
+  const mgrCat=cats.find(c=>c.Name===MANAGER_CATEGORY);
+  if(!mgrCat)throw new Error('No tracking category named "'+MANAGER_CATEGORY+'" found in this Xero organisation.');
+  setProgress(10,'Scanning Xero journals...');
+  const journals=await fetchJournals(tenantId,dateFrom,dateTo);
+  if(journals.length===0)throw new Error('No Xero journal entries found between '+fmtDateDisplay(dateFrom)+' and '+fmtDateDisplay(dateTo)+'.');
+  setProgress(44,'Processing '+journals.length+' journal entries...');
+  const t=transformJournals(journals);
+  if(t.jobList.length===0)throw new Error('No transactions with a "'+PROJECT_CATEGORY+'" tracking category found in this period.');
+  setProgress(50,'Fetching Manager P&L from Xero...');
+  const plData=await xeroGet('/Reports/ProfitAndLoss?fromDate='+dateFrom+'&toDate='+dateTo+'&trackingCategoryID='+mgrCat.TrackingCategoryID+'&standardLayout=true',tenantId);
+  await sleep(1100);
+  setProgress(55,'Fetching overall P&L from Xero...');
+  const plAllData=await xeroGet('/Reports/ProfitAndLoss?fromDate='+dateFrom+'&toDate='+dateTo+'&standardLayout=true',tenantId);
+  const managerPL=parseApiPnL(plData,parseApiPnLTotals(plAllData));
+  return{jobsByManager:t.jobsByManager,jobList:t.jobList,managerPL:managerPL};
+}
+
+// ══════════════════════════════ FILE UPLOAD PARSING ══════════════════════════════
+function readAsArrayBuffer(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(file);});}
+function parseNum(v){if(v===null||v===undefined||v==='')return 0;if(typeof v==='number')return isNaN(v)?0:v;let s=String(v).trim();if(s.startsWith('(')&&s.endsWith(')'))s='-'+s.slice(1,-1);s=s.replace(/[,£$\s]/g,'');const n=parseFloat(s);return isNaN(n)?0:n;}
 
 function parseJobDetail(ab){
   const wb=XLSX.read(ab,{type:'array',cellDates:true});
@@ -163,6 +517,54 @@ function parseManagerPL(ab){
   return result;
 }
 
+async function gatherFromFiles(){
+  const jdFile=document.getElementById('jobDetailFile').files[0];
+  const plFile=document.getElementById('managerPLFile').files[0];
+  if(!jdFile||!plFile)throw new Error('Please upload both the <strong>Job Detail</strong> and <strong>Manager P&amp;L</strong> files before generating.');
+  setProgress(8,'Reading Job Detail file...');const jdAB=await readAsArrayBuffer(jdFile);
+  setProgress(18,'Parsing job transactions...');const rawJobs=parseJobDetail(jdAB);
+  if(Object.keys(rawJobs).length===0)throw new Error('No jobs found. Check the Job Detail file - data should start at row 8 with job name rows (only column A populated) separating each job.');
+  setProgress(34,'Reading Manager P&L file...');const plAB=await readAsArrayBuffer(plFile);
+  setProgress(44,'Parsing Manager P&L...');const managerPL=parseManagerPL(plAB);
+  setProgress(52,'Assigning jobs to managers...');
+  const jobsByManager={};MANAGER_ORDER.forEach(m=>jobsByManager[m]=[]);
+  const usedTabs=new Set(['\u{1F4CA} profit summary']);const jobList=[];
+  for(const[jobName,txns]of Object.entries(rawJobs)){
+    if(txns.length===0)continue;
+    const mgr=getDominantManager(txns);const totals=calcTotals(txns);
+    let base=sanitizeTabName(jobName),tab=base,n=1;
+    while(usedTabs.has(tab.toLowerCase())){tab=sanitizeTabName(base.substring(0,28)+' '+n);n++;}
+    usedTabs.add(tab.toLowerCase());
+    const entry={name:jobName,tabName:tab,transactions:txns,manager:mgr,totals};
+    jobsByManager[mgr].push(entry);jobList.push(entry);
+  }
+  if(jobList.length===0)throw new Error('Job names were detected in the Job Detail file but no transaction rows were found beneath them. Check that the correct Xero Account Transactions export was uploaded and that its layout is unmodified.');
+  return{jobsByManager,jobList,managerPL};
+}
+
+// ══════════════════════════════ SHARED UTILS ══════════════════════════════
+function isIncome(account){const a=(account||'').toLowerCase().trim();return INCOME_KEYWORDS.some(k=>a.includes(k));}
+function sanitizeTabName(name){return name.replace(/[\\\/\?\*\[\]\:']/g,' ').replace(/\s+/g,' ').trim().substring(0,31);}
+function fmtDateGB(v){if(!v)return '';if(v instanceof Date)return v.toLocaleDateString('en-GB');if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return d.toLocaleDateString('en-GB');}return String(v);}
+function fmtDateDisplay(dateStr){if(!dateStr)return '';const d=new Date(dateStr+'T12:00:00');return d.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});}
+function normaliseManager(name){if(!name)return 'Unassigned';const lower=name.trim().toLowerCase();return MANAGER_ORDER.find(m=>m.toLowerCase()===lower)||'Unassigned';}
+function getDominantManager(txns){if(!txns||txns.length===0)return 'Unassigned';const counts={};for(const t of txns){const m=normaliseManager(t.manager);counts[m]=(counts[m]||0)+1;}return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];}
+function calcTotals(txns){let income=0,expenses=0;for(const t of txns){if(isIncome(t.account))income+=(t.credit-t.debit);else expenses+=(t.debit-t.credit);}return{income,expenses,net:income-expenses};}
+function isCF(name){return name.trim().toUpperCase().startsWith('CF');}
+function makeFilename(parts,suffix){return['JRandallRoofing',...parts,suffix].filter(Boolean).join('_')+'.xlsx';}
+function blobUrl(buffer){return URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));}
+
+['jobDetail','managerPL'].forEach(id=>{
+  const input=document.getElementById(id+'File');
+  const area=document.getElementById(id+'Area');
+  const name=document.getElementById(id+'Name');
+  input.addEventListener('change',()=>{if(input.files[0]){name.textContent=input.files[0].name;area.classList.add('has-file');}});
+  area.addEventListener('dragover',e=>{e.preventDefault();area.classList.add('drag-over');});
+  area.addEventListener('dragleave',()=>area.classList.remove('drag-over'));
+  area.addEventListener('drop',e=>{e.preventDefault();area.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f){try{const dt=new DataTransfer();dt.items.add(f);input.files=dt.files;}catch(_){}name.textContent=f.name;area.classList.add('has-file');}});
+});
+
+// ══════════════════════════════ EXCEL BUILDING ══════════════════════════════
 function fill(hex6){return{type:'pattern',pattern:'solid',fgColor:{argb:'FF'+hex6}};}
 function afont(opts={}){return{name:'Arial',size:opts.size||10,bold:opts.bold||false,italic:opts.italic||false,color:{argb:opts.color||'FF000000'}};}
 const CURR_FMT='#,##0.00;[Red]-#,##0.00';
@@ -260,7 +662,7 @@ function buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,singleMana
     mgrTotalRows[mgr]=r;r++;
 
     // Gap
-    ws.getRow(r).height=5;for(let c=1;c<=5;c++)setCell(ws,r,c,'',{fill:fill('1A1D23')});r++;
+    ws.getRow(r).height=5;for(let c2=1;c2<=5;c2++)setCell(ws,r,c2,'',{fill:fill('1A1D23')});r++;
   }
 
   // Grand Total (full report only)
@@ -335,31 +737,21 @@ function newWorkbook(){const wb=new ExcelJS.Workbook();wb.creator='J Randall Roo
 async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList){const wb=newWorkbook();buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
 async function buildManagerWorkbook(manager,jobs,managerPL,dateFrom,dateTo){const wb=newWorkbook();const jbm={};MANAGER_ORDER.forEach(m=>jbm[m]=m===manager?jobs:[]);buildSummarySheet(wb,jbm,managerPL,dateFrom,dateTo,manager);const sorted=[...jobs].sort((a,b)=>b.totals.net-a.totals.net);for(const job of sorted)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
 
+// ══════════════════════════════ GENERATE ══════════════════════════════
 async function generateReport(){
-  hideError();document.getElementById('resultArea').style.display='none';
-  const jdFile=document.getElementById('jobDetailFile').files[0];const plFile=document.getElementById('managerPLFile').files[0];
-  if(!jdFile||!plFile){showError('Please upload both the <strong>Job Detail</strong> and <strong>Manager P&amp;L</strong> files before generating.');return;}
+  hideError();hideInfo();document.getElementById('resultArea').style.display='none';
   const dateFrom=document.getElementById('dateFrom').value;const dateTo=document.getElementById('dateTo').value;
+  if(currentMode==='xero'&&(!dateFrom||!dateTo)){showError('Please select both a From and To date — the Xero report needs a defined period.');return;}
+  if(dateFrom&&dateTo&&dateFrom>dateTo){showError('The From date is after the To date.');return;}
+  if(currentMode==='xero'){
+    const spanDays=(new Date(dateTo+'T00:00:00Z')-new Date(dateFrom+'T00:00:00Z'))/86400000;
+    if(spanDays>365){showError('Xero limits reports to a maximum period of one year. Please pick a date range of 365 days or less.');return;}
+  }
   const dateParts=[];if(dateFrom)dateParts.push(dateFrom.replace(/-/g,''));if(dateTo)dateParts.push(dateTo.replace(/-/g,''));
   const btn=document.getElementById('generateBtn');btn.disabled=true;document.getElementById('progressArea').style.display='block';
   try{
-    setProgress(8,'Reading Job Detail file...');const jdAB=await readAsArrayBuffer(jdFile);
-    setProgress(18,'Parsing job transactions...');const rawJobs=parseJobDetail(jdAB);
-    if(Object.keys(rawJobs).length===0)throw new Error('No jobs found. Check the Job Detail file - data should start at row 8 with job name rows (only column A populated) separating each job.');
-    setProgress(34,'Reading Manager P&L file...');const plAB=await readAsArrayBuffer(plFile);
-    setProgress(44,'Parsing Manager P&L...');const managerPL=parseManagerPL(plAB);
-    setProgress(52,'Assigning jobs to managers...');
-    const jobsByManager={};MANAGER_ORDER.forEach(m=>jobsByManager[m]=[]);
-    const usedTabs=new Set(['\u{1F4CA} Profit Summary']);const jobList=[];
-    for(const[jobName,txns]of Object.entries(rawJobs)){
-      if(txns.length===0)continue;
-      const mgr=getDominantManager(txns);const totals=calcTotals(txns);
-      let base=sanitizeTabName(jobName),tab=base,n=1;
-      while(usedTabs.has(tab.toLowerCase())){tab=sanitizeTabName(base.substring(0,28)+' '+n);n++;}
-      usedTabs.add(tab.toLowerCase());
-      const entry={name:jobName,tabName:tab,transactions:txns,manager:mgr,totals};
-      jobsByManager[mgr].push(entry);jobList.push(entry);
-    }
+    const data=currentMode==='xero'?await gatherFromXero(dateFrom,dateTo):await gatherFromFiles();
+    const{jobsByManager,jobList,managerPL}=data;
     setProgress(60,'Building full directors report...');const fullUrl=await buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList);
     const dl=document.getElementById('downloadLink');dl.href=fullUrl;dl.download=makeFilename(dateParts,'Full_Report');
     const managerDl=document.getElementById('managerDownloads');managerDl.innerHTML='';
@@ -374,9 +766,49 @@ async function generateReport(){
     }
     setProgress(100,'Done — '+jobList.length+' jobs across '+total+' manager'+(total!==1?'s':''));
     document.getElementById('resultArea').style.display='block';
-  }catch(err){console.error(err);showError('<strong>Error:</strong> '+err.message);}
+  }catch(err){console.error(err);document.getElementById('progressArea').style.display='none';setProgress(0,'');showError('<strong>Error:</strong> '+err.message);}
   finally{btn.disabled=false;}
 }
+
+// ══════════════════════════════ STARTUP ══════════════════════════════
+window.addEventListener('load',async()=>{
+  const params=new URLSearchParams(window.location.search);
+  if(params.has('error')){
+    setMode('xero');
+    showError('<strong>Xero sign-in was not completed:</strong> '+params.get('error'));
+    window.history.replaceState({},'',window.location.pathname);
+    return;
+  }
+  if(params.has('code')){
+    setMode('xero');
+    document.getElementById('screenConnect').style.display='none';
+    document.getElementById('progressArea').style.display='block';
+    setProgress(40,'Completing Xero sign-in...');
+    try{
+      await handleCallback(params.get('code'),params.get('state'));
+      setProgress(75,'Fetching organisation details...');
+      const conns=await getConnections();
+      if(!conns.length)throw new Error('No Xero organisation was authorised.');
+      localStorage.setItem('xero_conns',JSON.stringify(conns.map(c=>({tenantId:c.tenantId,tenantName:c.tenantName}))));
+      localStorage.setItem('xero_tenant',conns[0].tenantId);
+      localStorage.setItem('xero_org',conns[0].tenantName);
+      setProgress(100,'Connected!');
+      setTimeout(()=>{document.getElementById('progressArea').style.display='none';setProgress(0,'');updateControls();},700);
+    }catch(err){
+      document.getElementById('progressArea').style.display='none';
+      // Sign-in did not complete through to a tenant: clear half-saved tokens
+      // so the UI doesn't render as connected while Generate cannot work.
+      // (Guarded so a failed RE-auth doesn't wipe a previously working connection.)
+      if(!localStorage.getItem('xero_tenant')){
+        ['xero_at','xero_rt','xero_exp','xero_conns','xero_org'].forEach(k=>localStorage.removeItem(k));
+      }
+      showError('<strong>Sign-in error:</strong> '+err.message+'<br>Please click "Sign in with Xero" to try again.');
+    }
+    window.history.replaceState({},'',window.location.pathname);
+    updateControls();return;
+  }
+  setMode('xero');
+});
 </script>
 </body>
 </html>
