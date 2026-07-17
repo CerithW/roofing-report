@@ -1,0 +1,382 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J Randall Roofing — Monthly Project Reports</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:40px 20px}
+.header{text-align:center;margin-bottom:36px}
+.header h1{font-size:26px;font-weight:700;color:#0E93C0;letter-spacing:.4px}
+.header h1 span{color:#C9A84C}
+.header p{color:#6B7280;margin-top:8px;font-size:13px}
+.card{background:#23272F;border-radius:14px;padding:32px;width:100%;max-width:780px;border:1px solid #2E3340;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.section-label{font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px}
+.upload-area{border:2px dashed #2E3340;border-radius:10px;padding:26px 16px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.upload-area:hover,.upload-area.drag-over{border-color:#0E93C0;background:rgba(14,147,192,.06)}
+.upload-area.has-file{border-color:#22C55E;background:rgba(34,197,94,.05)}
+.upload-area input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{font-size:30px;margin-bottom:10px}
+.upload-label{font-size:13px;font-weight:700;color:#0E93C0;margin-bottom:4px}
+.upload-sub{font-size:11px;color:#4B5563;line-height:1.5}
+.upload-filename{font-size:11px;color:#22C55E;margin-top:10px;word-break:break-all;min-height:16px}
+.date-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:26px}
+.field-group label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
+.field-group input{width:100%;background:#1A1D23;border:1px solid #2E3340;border-radius:7px;padding:10px 14px;color:#E8EAF0;font-size:14px;outline:none;transition:border-color .2s}
+.field-group input:focus{border-color:#0E93C0}
+.generate-btn{width:100%;padding:14px;background:#0E93C0;color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s;letter-spacing:.3px}
+.generate-btn:hover:not(:disabled){background:#0A7BA3}
+.generate-btn:disabled{opacity:.45;cursor:not-allowed}
+.progress{margin-top:22px;display:none}
+.progress-bar-bg{height:5px;background:#2E3340;border-radius:3px;overflow:hidden;margin-bottom:10px}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,#0E93C0,#22C55E);border-radius:3px;transition:width .3s}
+.progress-text{font-size:12px;color:#6B7280;text-align:center}
+.result{margin-top:22px;display:none}
+.result-group-label{font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+.result-divider{height:1px;background:#2E3340;margin:18px 0}
+.download-btn{display:inline-flex;align-items:center;gap:10px;padding:13px 24px;background:#22C55E;color:#fff;border-radius:9px;text-decoration:none;font-size:14px;font-weight:700;transition:opacity .2s}
+.download-btn:hover{opacity:.85}
+.manager-downloads{display:flex;flex-wrap:wrap;gap:10px;margin-top:2px}
+.mgr-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;color:#fff;border-radius:7px;text-decoration:none;font-size:13px;font-weight:600;transition:opacity .2s;border:none;cursor:pointer}
+.mgr-btn:hover{opacity:.8}
+.result-sub{margin-top:14px;font-size:11px;color:#4B5563;text-align:center}
+.error-msg{margin-top:16px;padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:7px;color:#F87171;font-size:13px;display:none;line-height:1.5}
+.divider{height:1px;background:#2E3340;margin:24px 0}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>J Randall Roofing <span>— Monthly Project Reports</span></h1>
+  <p>Upload your Xero exports to generate a formatted Excel workbook with per-job detail and manager summary</p>
+</div>
+<div class="card">
+  <div class="section-label">Upload Files</div>
+  <div class="upload-grid">
+    <div class="upload-area" id="jobDetailArea">
+      <input type="file" id="jobDetailFile" accept=".xlsx,.xls,.csv">
+      <div class="upload-icon">&#128209;</div>
+      <div class="upload-label">Job Detail</div>
+      <div class="upload-sub">Xero Account Transactions export (.xlsx)</div>
+      <div class="upload-filename" id="jobDetailName">No file selected</div>
+    </div>
+    <div class="upload-area" id="managerPLArea">
+      <input type="file" id="managerPLFile" accept=".xlsx,.xls,.csv">
+      <div class="upload-icon">&#128202;</div>
+      <div class="upload-label">Manager P&amp;L</div>
+      <div class="upload-sub">Xero Profit and Loss export (.xlsx)</div>
+      <div class="upload-filename" id="managerPLName">No file selected</div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section-label" style="margin-bottom:14px">Report Period</div>
+  <div class="date-row">
+    <div class="field-group"><label>From</label><input type="date" id="dateFrom"></div>
+    <div class="field-group"><label>To</label><input type="date" id="dateTo"></div>
+  </div>
+  <button class="generate-btn" id="generateBtn" onclick="generateReport()">Generate Report</button>
+  <div class="progress" id="progressArea">
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar" style="width:0%"></div></div>
+    <div class="progress-text" id="progressText">Initialising...</div>
+  </div>
+  <div class="result" id="resultArea">
+    <div class="result-group-label">&#128193; Directors &mdash; Full Report</div>
+    <a class="download-btn" id="downloadLink" href="#" download="JRandallRoofing_Report.xlsx">&#11015; Download Full Report</a>
+    <div class="result-divider"></div>
+    <div class="result-group-label">&#128100; Individual Manager Reports</div>
+    <div class="manager-downloads" id="managerDownloads"></div>
+    <p class="result-sub">Each manager report contains only their own jobs &mdash; ready to send directly to the individual</p>
+  </div>
+  <div class="error-msg" id="errorMsg"></div>
+</div>
+<script>
+const MANAGER_ORDER = ['Greg','Steff','Tyler','Shella','Jake','Charlotte','Unassigned'];
+const MC = {
+  Greg:       {dark:'0A3D5C', light:'D6EAF8', sub:'1B6494', btn:'#0A3D5C'},
+  Steff:      {dark:'3B1F6B', light:'E8E0F5', sub:'6A3AB0', btn:'#3B1F6B'},
+  Tyler:      {dark:'1A5C3A', light:'D5F0E4', sub:'2E9962', btn:'#1A5C3A'},
+  Shella:     {dark:'7A2D00', light:'F5E0CF', sub:'B84800', btn:'#7A2D00'},
+  Jake:       {dark:'4A3000', light:'F5EDD0', sub:'7A5000', btn:'#4A3000'},
+  Charlotte:  {dark:'1A3A5C', light:'D0E3F5', sub:'2E6494', btn:'#1A3A5C'},
+  Unassigned: {dark:'444444', light:'EBEBEB', sub:'666666', btn:'#444444'}
+};
+const INCOME_KEYWORDS = ['flat felt roofing','unconfirmed valuations'];
+
+function setProgress(pct,text){document.getElementById('progressBar').style.width=pct+'%';document.getElementById('progressText').textContent=text;}
+function showError(msg){const el=document.getElementById('errorMsg');el.innerHTML=msg;el.style.display='block';}
+function hideError(){document.getElementById('errorMsg').style.display='none';}
+function readAsArrayBuffer(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(file);});}
+function isIncome(account){const a=(account||'').toLowerCase().trim();return INCOME_KEYWORDS.some(k=>a.includes(k));}
+function parseNum(v){if(v===null||v===undefined||v==='')return 0;if(typeof v==='number')return isNaN(v)?0:v;let s=String(v).trim();if(s.startsWith('(')&&s.endsWith(')'))s='-'+s.slice(1,-1);s=s.replace(/[,£$\s]/g,'');const n=parseFloat(s);return isNaN(n)?0:n;}
+function sanitizeTabName(name){return name.replace(/[\\\/\?\*\[\]\:']/g,' ').replace(/\s+/g,' ').trim().substring(0,31);}
+function fmtDateGB(v){if(!v)return '';if(v instanceof Date)return v.toLocaleDateString('en-GB');if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return d.toLocaleDateString('en-GB');}return String(v);}
+function fmtDateDisplay(dateStr){if(!dateStr)return '';const d=new Date(dateStr+'T12:00:00');return d.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});}
+function normaliseManager(name){if(!name)return 'Unassigned';const lower=name.trim().toLowerCase();return MANAGER_ORDER.find(m=>m.toLowerCase()===lower)||'Unassigned';}
+function getDominantManager(txns){if(!txns||txns.length===0)return 'Unassigned';const counts={};for(const t of txns){const m=normaliseManager(t.manager);counts[m]=(counts[m]||0)+1;}return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];}
+function calcTotals(txns){let income=0,expenses=0;for(const t of txns){if(isIncome(t.account))income+=(t.credit-t.debit);else expenses+=(t.debit-t.credit);}return{income,expenses,net:income-expenses};}
+function isCF(name){return name.trim().toUpperCase().startsWith('CF');}
+function makeFilename(parts,suffix){return['JRandallRoofing',...parts,suffix].filter(Boolean).join('_')+'.xlsx';}
+function blobUrl(buffer){return URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));}
+
+['jobDetail','managerPL'].forEach(id=>{
+  const input=document.getElementById(id+'File');
+  const area=document.getElementById(id+'Area');
+  const name=document.getElementById(id+'Name');
+  input.addEventListener('change',()=>{if(input.files[0]){name.textContent=input.files[0].name;area.classList.add('has-file');}});
+  area.addEventListener('dragover',e=>{e.preventDefault();area.classList.add('drag-over');});
+  area.addEventListener('dragleave',()=>area.classList.remove('drag-over'));
+  area.addEventListener('drop',e=>{e.preventDefault();area.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f){try{const dt=new DataTransfer();dt.items.add(f);input.files=dt.files;}catch(_){}name.textContent=f.name;area.classList.add('has-file');}});
+});
+
+function parseJobDetail(ab){
+  const wb=XLSX.read(ab,{type:'array',cellDates:true});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,cellDates:true});
+  const jobs={};let currentJob=null;
+  for(let i=7;i<data.length;i++){
+    const row=data[i];const col0=String(row[0]||'').trim();
+    const restBlank=[1,2,3,4,5,6,7,8,9].every(j=>{const v=row[j];return v===''||v===null||v===undefined;});
+    if(col0&&restBlank){const low=col0.toLowerCase();if(low.startsWith('total')||low.startsWith('count')||low.endsWith(' total')||low.endsWith(' count'))continue;currentJob=col0;if(!jobs[currentJob])jobs[currentJob]=[];continue;}
+    if(!currentJob)continue;
+    if(!col0&&!String(row[1]||'').trim()&&!String(row[2]||'').trim())continue;
+    const d2=String(row[2]||'').toLowerCase();const d0=col0.toLowerCase();
+    if(d2==='total'||d2==='count'||d0.endsWith(' total')||d0.endsWith(' count'))continue;
+    jobs[currentJob].push({date:row[0],source:String(row[1]||'').trim(),description:String(row[2]||'').trim(),reference:String(row[3]||'').trim(),debit:parseNum(row[4]),credit:parseNum(row[5]),account:String(row[8]||'').trim(),manager:String(row[9]||'').trim()});
+  }
+  return jobs;
+}
+
+function parseManagerPL(ab){
+  const wb=XLSX.read(ab,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
+  const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:0});
+  const headers=(data[4]||[]).map(h=>String(h).trim());const result={};
+  for(const mgr of['Charlotte','Greg','Jake','Shella','Steff','Tyler','Unassigned']){
+    const col=headers.findIndex(h=>h.toLowerCase()===mgr.toLowerCase());
+    if(col===-1){result[mgr]={income:0,costs:0,net:0};continue;}
+    const income=parseNum(data[7]?.[col])+parseNum(data[8]?.[col]);
+    let costs=0;for(let r=12;r<=28;r++)costs+=parseNum(data[r]?.[col]);costs+=parseNum(data[36]?.[col]);
+    result[mgr]={income,costs,net:income-costs};
+  }
+  return result;
+}
+
+function fill(hex6){return{type:'pattern',pattern:'solid',fgColor:{argb:'FF'+hex6}};}
+function afont(opts={}){return{name:'Arial',size:opts.size||10,bold:opts.bold||false,italic:opts.italic||false,color:{argb:opts.color||'FF000000'}};}
+const CURR_FMT='#,##0.00;[Red]-#,##0.00';
+const PCT_FMT='0.0"%"';
+const CURR_GBP='£#,##0.00;[Red]-£#,##0.00';
+function border(cell){cell.border={top:{style:'thin',color:{argb:'FFD4D8E0'}},bottom:{style:'thin',color:{argb:'FFD4D8E0'}},left:{style:'thin',color:{argb:'FFD4D8E0'}},right:{style:'thin',color:{argb:'FFD4D8E0'}}};}
+function setCell(ws,r,c,value,opts={}){const cell=ws.getCell(r,c);cell.value=value;if(opts.fill)cell.fill=opts.fill;if(opts.font)cell.font=opts.font;if(opts.numFmt)cell.numFmt=opts.numFmt;if(opts.alignment)cell.alignment=opts.alignment;if(opts.border)border(cell);return cell;}
+
+function buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,singleManager){
+  const ws=wb.addWorksheet('\u{1F4CA} Profit Summary',{views:[{state:'frozen',ySplit:4,showGridLines:false}]});
+  ws.getColumn(1).width=44;ws.getColumn(2).width=16;ws.getColumn(3).width=17;ws.getColumn(4).width=16;ws.getColumn(5).width=12;
+  let r=1;
+
+  // Title
+  ws.getRow(r).height=34;ws.mergeCells(r,1,r,5);
+  setCell(ws,r,1,singleManager?'J Randall Roofing Contractors Ltd — '+singleManager+' / Profit Summary':'J Randall Roofing Contractors Ltd — Profit Summary by Manager',{fill:fill('1A1D23'),font:afont({size:15,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  // Subtitle
+  ws.getRow(r).height=20;ws.mergeCells(r,1,r,5);
+  const period=(dateFrom&&dateTo)?'Period: '+fmtDateDisplay(dateFrom)+' to '+fmtDateDisplay(dateTo):'Period: All transactions';
+  setCell(ws,r,1,period+'   |   Income: Flat Felt Roofing + Unconfirmed Valuations',{fill:fill('1A1D23'),font:afont({size:9,italic:true,color:'FF8A9AAB'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  // Spacer
+  ws.getRow(r).height=4;for(let c=1;c<=5;c++)setCell(ws,r,c,'',{fill:fill('1A1D23')});r++;
+  // Column headers
+  ws.getRow(r).height=22;
+  ['Job Name','Income (\xa3)','Total Costs (\xa3)','Net Profit (\xa3)','Margin %'].forEach((h,ci)=>{setCell(ws,r,ci+1,h,{fill:fill('2C3244'),font:afont({bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:ci===0?'left':'right'},border:true});});r++;
+
+  const managers=singleManager?[singleManager]:MANAGER_ORDER;
+  const mgrTotalRows={};
+
+  for(const mgr of managers){
+    const jobs=jobsByManager[mgr]||[];const pl=managerPL[mgr]||{income:0,costs:0,net:0};const c=MC[mgr]||MC.Unassigned;
+    if(jobs.length===0&&pl.income===0&&pl.costs===0)continue;
+
+    // Manager header
+    ws.getRow(r).height=24;ws.mergeCells(r,1,r,5);
+    setCell(ws,r,1,mgr.toUpperCase(),{fill:fill(c.dark),font:afont({size:11,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'left',indent:1}});r++;
+
+    const sorted=[...jobs].sort((a,b)=>b.totals.net-a.totals.net);
+    const stdJobs=sorted.filter(j=>!isCF(j.name));
+    const cfJobs=sorted.filter(j=>isCF(j.name));
+    const splitGroups=stdJobs.length>0&&cfJobs.length>0;
+
+    // Write a group of jobs, optionally with subheader + subtotal
+    function writeGroup(groupJobs,groupLabel){
+      if(groupJobs.length===0)return;
+
+      if(splitGroups){
+        // Group subheader row
+        ws.getRow(r).height=17;ws.mergeCells(r,1,r,5);
+        setCell(ws,r,1,groupLabel,{fill:fill(c.light),font:afont({size:9,bold:true,italic:true,color:'FF'+c.dark}),alignment:{vertical:'middle',horizontal:'left',indent:2}});r++;
+      }
+
+      const firstJobRow=r;
+      groupJobs.forEach((job,ji)=>{
+        const stripe=ji%2===1?c.light:'FFFFFF';
+        ws.getRow(r).height=18;
+        const safeName=sanitizeTabName(job.tabName);
+        const nc=ws.getCell(r,1);
+        nc.value={text:job.name,hyperlink:'#\''+safeName+'\'!A1'};
+        nc.font={name:'Arial',size:10,color:{argb:'FF0563C1'},underline:true};
+        nc.fill=fill(stripe);nc.alignment={vertical:'middle',horizontal:'left',indent:splitGroups?3:1};border(nc);
+        setCell(ws,r,2,job.totals.income,{fill:fill(stripe),font:afont(),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        setCell(ws,r,3,{formula:'B'+r+'-D'+r,result:job.totals.income-job.totals.net},{fill:fill(stripe),font:afont(),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        setCell(ws,r,4,job.totals.net,{fill:fill(stripe),font:afont({color:job.totals.net>=0?'FF1A6B3A':'FFCC2020'}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        setCell(ws,r,5,{formula:'IF(B'+r+'=0,"",D'+r+'/B'+r+'*100)',result:job.totals.income===0?'':job.totals.net/job.totals.income*100},{fill:fill(stripe),font:afont(),numFmt:PCT_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        r++;
+      });
+      const lastJobRow=r-1;
+
+      if(splitGroups){
+        // Group subtotal row
+        const subInc=groupJobs.reduce((s,j)=>s+j.totals.income,0);
+        const subNet=groupJobs.reduce((s,j)=>s+j.totals.net,0);
+        ws.getRow(r).height=19;
+        setCell(ws,r,1,groupLabel+' Subtotal',{fill:fill(c.sub),font:afont({bold:true,size:9,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'left',indent:2},border:true});
+        setCell(ws,r,2,{formula:'SUM(B'+firstJobRow+':B'+lastJobRow+')',result:subInc},{fill:fill(c.sub),font:afont({bold:true,color:'FFFFFFFF'}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        setCell(ws,r,3,{formula:'B'+r+'-D'+r,result:subInc-subNet},{fill:fill(c.sub),font:afont({bold:true,color:'FFFFFFFF'}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        setCell(ws,r,4,{formula:'SUM(D'+firstJobRow+':D'+lastJobRow+')',result:subNet},{fill:fill(c.sub),font:afont({bold:true,color:subNet>=0?'FFFFFF99':'FFFFAA99'}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        setCell(ws,r,5,{formula:'IF(B'+r+'=0,"",D'+r+'/B'+r+'*100)',result:subInc===0?'':subNet/subInc*100},{fill:fill(c.sub),font:afont({bold:true,color:'FFFFFFFF'}),numFmt:PCT_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+        r++;
+      }
+    }
+
+    writeGroup(stdJobs,'Standard Jobs');
+    writeGroup(cfJobs,'CF Projects');
+
+    // Manager total
+    ws.getRow(r).height=22;
+    const tf=afont({bold:true,color:'FFFFFFFF'});
+    setCell(ws,r,1,mgr+' Total',{fill:fill(c.dark),font:tf,alignment:{vertical:'middle',horizontal:'left',indent:1},border:true});
+    setCell(ws,r,2,pl.income,{fill:fill(c.dark),font:tf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,3,pl.costs,{fill:fill(c.dark),font:tf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,4,{formula:'B'+r+'-C'+r,result:pl.net},{fill:fill(c.dark),font:tf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,5,{formula:'IF(B'+r+'=0,"",D'+r+'/B'+r+'*100)',result:pl.income===0?'':pl.net/pl.income*100},{fill:fill(c.dark),font:tf,numFmt:PCT_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    mgrTotalRows[mgr]=r;r++;
+
+    // Gap
+    ws.getRow(r).height=5;for(let c=1;c<=5;c++)setCell(ws,r,c,'',{fill:fill('1A1D23')});r++;
+  }
+
+  // Grand Total (full report only)
+  if(!singleManager){
+    const present=MANAGER_ORDER.filter(m=>mgrTotalRows[m]);
+    if(present.length>0){
+      ws.getRow(r).height=26;
+      const bRefs=present.map(m=>'B'+mgrTotalRows[m]).join('+');const cRefs=present.map(m=>'C'+mgrTotalRows[m]).join('+');
+      const totInc=present.reduce((s,m)=>(managerPL[m]?.income||0)+s,0);const totCost=present.reduce((s,m)=>(managerPL[m]?.costs||0)+s,0);
+      const gtf=afont({size:11,bold:true,color:'FFFFC8A0'});
+      setCell(ws,r,1,'GRAND TOTAL',{fill:fill('111418'),font:gtf,alignment:{vertical:'middle',horizontal:'left',indent:1},border:true});
+      setCell(ws,r,2,{formula:bRefs,result:totInc},{fill:fill('111418'),font:gtf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+      setCell(ws,r,3,{formula:cRefs,result:totCost},{fill:fill('111418'),font:gtf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+      setCell(ws,r,4,{formula:'B'+r+'-C'+r,result:totInc-totCost},{fill:fill('111418'),font:gtf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+      setCell(ws,r,5,{formula:'IF(B'+r+'=0,"",D'+r+'/B'+r+'*100)',result:totInc===0?'':(totInc-totCost)/totInc*100},{fill:fill('111418'),font:gtf,numFmt:PCT_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    }
+  }
+}
+
+function buildJobSheet(wb,jobName,tabName,transactions,manager){
+  const ws=wb.addWorksheet(tabName,{views:[{showGridLines:false}]});
+  const mc=MC[manager]||MC.Unassigned;
+  [12,10,40,15,12,12,26].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  let r=1;
+  ws.getRow(r).height=32;ws.mergeCells(r,1,r,7);setCell(ws,r,1,jobName,{fill:fill('111418'),font:afont({size:14,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  ws.getRow(r).height=20;ws.mergeCells(r,1,r,7);setCell(ws,r,1,'Manager: '+manager,{fill:fill(mc.dark),font:afont({size:10,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  const kpiLabelRow=r;const kpiValueRow=r+1;r+=3;
+  ws.getRow(r).height=20;
+  ['Date','Source','Description','Reference','Debit','Credit','Account'].forEach((h,ci)=>{setCell(ws,r,ci+1,h,{fill:fill(mc.dark),font:afont({bold:true,color:'FFFFFFFF',size:9}),alignment:{vertical:'middle',horizontal:ci>=4&&ci<=5?'right':'left'},border:true});});r++;
+  const incByAcc={},expByAcc={};
+  for(const t of transactions){if(isIncome(t.account)){if(!incByAcc[t.account])incByAcc[t.account]=[];incByAcc[t.account].push(t);}else{const acct=t.account||'(No Account)';if(!expByAcc[acct])expByAcc[acct]=[];expByAcc[acct].push(t);}}
+  const incSubRows=[],expSubRows=[];
+  function writeTxRow(t,rowNum,isAlt){
+    ws.getRow(rowNum).height=15;const bg=isAlt?'F5F6F8':'FFFFFF';
+    [fmtDateGB(t.date),t.source,t.description,t.reference,t.debit||null,t.credit||null,t.account].forEach((v,ci)=>{
+      const cell=ws.getCell(rowNum,ci+1);cell.value=v;cell.fill=fill(bg);cell.font=afont({size:9});
+      cell.alignment={vertical:'middle',horizontal:ci>=4&&ci<=5?'right':'left'};
+      if(ci>=4&&ci<=5&&v!==null)cell.numFmt=CURR_FMT;
+    });
+  }
+  function writeSectionHdr(label,rowNum,bgHex){ws.getRow(rowNum).height=22;ws.mergeCells(rowNum,1,rowNum,7);setCell(ws,rowNum,1,label,{fill:fill(bgHex),font:afont({bold:true,size:10,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'left',indent:1}});}
+  function writeAcctHdr(label,rowNum){ws.getRow(rowNum).height=15;ws.mergeCells(rowNum,1,rowNum,7);setCell(ws,rowNum,1,label,{fill:fill('EEF1F5'),font:afont({bold:true,size:9,color:'FF2C3244'}),alignment:{vertical:'middle',horizontal:'left',indent:2}});}
+  function writeSubtotal(acctLabel,firstData,lastData,rowNum,isExp){
+    ws.getRow(rowNum).height=17;ws.mergeCells(rowNum,1,rowNum,4);
+    setCell(ws,rowNum,1,'Subtotal — '+acctLabel,{fill:fill('E4E8EF'),font:afont({bold:true,size:9}),alignment:{vertical:'middle',horizontal:'left',indent:2},border:true});
+    const eFormula=isExp?'SUM(E'+firstData+':E'+lastData+')-SUM(F'+firstData+':F'+lastData+')':null;
+    const fFormula=!isExp?'SUM(F'+firstData+':F'+lastData+')-SUM(E'+firstData+':E'+lastData+')':null;
+    if(eFormula)setCell(ws,rowNum,5,{formula:eFormula},{fill:fill('E4E8EF'),font:afont({bold:true,size:9}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    else setCell(ws,rowNum,5,'',{fill:fill('E4E8EF'),border:true});
+    if(fFormula)setCell(ws,rowNum,6,{formula:fFormula},{fill:fill('E4E8EF'),font:afont({bold:true,size:9}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    else setCell(ws,rowNum,6,'',{fill:fill('E4E8EF'),border:true});
+    setCell(ws,rowNum,7,'',{fill:fill('E4E8EF')});
+    if(isExp)expSubRows.push(rowNum);else incSubRows.push(rowNum);
+  }
+  if(Object.keys(incByAcc).length>0){writeSectionHdr('▲  INCOME',r,mc.dark);r++;for(const[acct,txns]of Object.entries(incByAcc)){writeAcctHdr(acct,r);r++;const first=r;txns.forEach((t,i)=>{writeTxRow(t,r,i%2===1);r++;});writeSubtotal(acct,first,r-1,r,false);r++;}}
+  if(Object.keys(expByAcc).length>0){writeSectionHdr('▼  EXPENSES',r,'3A3F4A');r++;for(const[acct,txns]of Object.entries(expByAcc)){writeAcctHdr(acct,r);r++;const first=r;txns.forEach((t,i)=>{writeTxRow(t,r,i%2===1);r++;});writeSubtotal(acct,first,r-1,r,true);r++;}}
+  const jobTotalRow=r;ws.getRow(r).height=24;ws.mergeCells(r,1,r,4);setCell(ws,r,1,'JOB TOTAL',{fill:fill('111418'),font:afont({bold:true,size:10,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'left',indent:1}});
+  const expDebit=expSubRows.length>0?expSubRows.map(x=>'E'+x).join('+'):'0';const incCredit=incSubRows.length>0?incSubRows.map(x=>'F'+x).join('+'):'0';const totals=calcTotals(transactions);
+  setCell(ws,r,5,{formula:expDebit,result:totals.expenses},{fill:fill('111418'),font:afont({bold:true,color:'FFFFFFFF'}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+  setCell(ws,r,6,{formula:incCredit,result:totals.income},{fill:fill('111418'),font:afont({bold:true,color:'FFFFFFFF'}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+  setCell(ws,r,7,'',{fill:fill('111418')});
+  const netBg=totals.net>=0?'1A5C3A':'6B1A1A';
+  const kpiDefs=[{label:'💰  INCOME',cols:[1,2],formula:'F'+jobTotalRow,bg:'1E3A5F',result:totals.income},{label:'📋  EXPENSES',cols:[3,5],formula:'E'+jobTotalRow,bg:'3A2020',result:totals.expenses},{label:'📈  NET PROFIT',cols:[6,7],formula:'F'+jobTotalRow+'-E'+jobTotalRow,bg:netBg,result:totals.net}];
+  kpiDefs.forEach(({label,cols,formula,bg,result:res})=>{
+    const[sc,ec]=cols;ws.getRow(kpiLabelRow).height=16;ws.mergeCells(kpiLabelRow,sc,kpiLabelRow,ec);setCell(ws,kpiLabelRow,sc,label,{fill:fill(bg),font:afont({size:9,bold:true,color:'FFB0C4D8'}),alignment:{vertical:'middle',horizontal:'center'}});
+    ws.getRow(kpiValueRow).height=30;ws.mergeCells(kpiValueRow,sc,kpiValueRow,ec);setCell(ws,kpiValueRow,sc,{formula,result:res},{fill:fill(bg),font:afont({size:15,bold:true,color:'FFFFFFFF'}),numFmt:CURR_GBP,alignment:{vertical:'middle',horizontal:'center'}});
+    if(sc===1){ws.getRow(kpiValueRow+1).height=8;for(let c=1;c<=7;c++)ws.getCell(kpiValueRow+1,c).fill=fill('1E2029');}
+  });
+}
+
+function newWorkbook(){const wb=new ExcelJS.Workbook();wb.creator='J Randall Roofing Report Generator';wb.created=wb.modified=new Date();return wb;}
+async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList){const wb=newWorkbook();buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+async function buildManagerWorkbook(manager,jobs,managerPL,dateFrom,dateTo){const wb=newWorkbook();const jbm={};MANAGER_ORDER.forEach(m=>jbm[m]=m===manager?jobs:[]);buildSummarySheet(wb,jbm,managerPL,dateFrom,dateTo,manager);const sorted=[...jobs].sort((a,b)=>b.totals.net-a.totals.net);for(const job of sorted)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+
+async function generateReport(){
+  hideError();document.getElementById('resultArea').style.display='none';
+  const jdFile=document.getElementById('jobDetailFile').files[0];const plFile=document.getElementById('managerPLFile').files[0];
+  if(!jdFile||!plFile){showError('Please upload both the <strong>Job Detail</strong> and <strong>Manager P&amp;L</strong> files before generating.');return;}
+  const dateFrom=document.getElementById('dateFrom').value;const dateTo=document.getElementById('dateTo').value;
+  const dateParts=[];if(dateFrom)dateParts.push(dateFrom.replace(/-/g,''));if(dateTo)dateParts.push(dateTo.replace(/-/g,''));
+  const btn=document.getElementById('generateBtn');btn.disabled=true;document.getElementById('progressArea').style.display='block';
+  try{
+    setProgress(8,'Reading Job Detail file...');const jdAB=await readAsArrayBuffer(jdFile);
+    setProgress(18,'Parsing job transactions...');const rawJobs=parseJobDetail(jdAB);
+    if(Object.keys(rawJobs).length===0)throw new Error('No jobs found. Check the Job Detail file - data should start at row 8 with job name rows (only column A populated) separating each job.');
+    setProgress(34,'Reading Manager P&L file...');const plAB=await readAsArrayBuffer(plFile);
+    setProgress(44,'Parsing Manager P&L...');const managerPL=parseManagerPL(plAB);
+    setProgress(52,'Assigning jobs to managers...');
+    const jobsByManager={};MANAGER_ORDER.forEach(m=>jobsByManager[m]=[]);
+    const usedTabs=new Set(['\u{1F4CA} Profit Summary']);const jobList=[];
+    for(const[jobName,txns]of Object.entries(rawJobs)){
+      if(txns.length===0)continue;
+      const mgr=getDominantManager(txns);const totals=calcTotals(txns);
+      let base=sanitizeTabName(jobName),tab=base,n=1;
+      while(usedTabs.has(tab.toLowerCase())){tab=sanitizeTabName(base.substring(0,28)+' '+n);n++;}
+      usedTabs.add(tab.toLowerCase());
+      const entry={name:jobName,tabName:tab,transactions:txns,manager:mgr,totals};
+      jobsByManager[mgr].push(entry);jobList.push(entry);
+    }
+    setProgress(60,'Building full directors report...');const fullUrl=await buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList);
+    const dl=document.getElementById('downloadLink');dl.href=fullUrl;dl.download=makeFilename(dateParts,'Full_Report');
+    const managerDl=document.getElementById('managerDownloads');managerDl.innerHTML='';
+    const managersWithJobs=MANAGER_ORDER.filter(m=>(jobsByManager[m]||[]).length>0);const total=managersWithJobs.length;
+    for(let i=0;i<total;i++){
+      const mgr=managersWithJobs[i];const jobs=jobsByManager[mgr];
+      setProgress(65+Math.round((i/total)*32),'Building '+mgr+'\'s report ('+(i+1)+'/'+total+')...');
+      const url=await buildManagerWorkbook(mgr,jobs,managerPL,dateFrom,dateTo);
+      const mc=MC[mgr]||MC.Unassigned;const a=document.createElement('a');
+      a.className='mgr-btn';a.style.background=mc.btn;a.href=url;a.download=makeFilename(dateParts,mgr+'_Report');a.textContent='⬇ '+mgr;
+      managerDl.appendChild(a);
+    }
+    setProgress(100,'Done — '+jobList.length+' jobs across '+total+' manager'+(total!==1?'s':''));
+    document.getElementById('resultArea').style.display='block';
+  }catch(err){console.error(err);showError('<strong>Error:</strong> '+err.message);}
+  finally{btn.disabled=false;}
+}
+</script>
+</body>
+</html>
