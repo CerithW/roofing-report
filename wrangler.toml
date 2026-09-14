@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-01-01"
 
 [vars]
-XERO_CLIENT_ID = "B80063E80ADB43239F79951FCCF14DD5"
+XERO_CLIENT_ID = "28D99854CC604670809F2C8ABFA61E12"
 
 # XERO_CLIENT_SECRET is a secret — set in the Cloudflare dashboard
 # (Workers & Pages -> roofing-xero-proxy -> Settings -> Variables and Secrets),
