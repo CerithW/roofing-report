@@ -590,15 +590,36 @@ function parseJobDetail(ab){
   return jobs;
 }
 
+// Parse the Manager P&L export by LABELS, not fixed row numbers: Xero adds
+// and removes account rows between months, so hardcoded row indices misread
+// the file (observed: an income account + "Total Income" double-counted).
+// The export's own "Total <section>" rows are authoritative.
 function parseManagerPL(ab){
   const wb=XLSX.read(ab,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
-  const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:0});
-  const headers=(data[4]||[]).map(h=>String(h).trim());const result={};
-  for(const mgr of['Charlotte','Greg','Jake','Shella','Steff','Tyler','Unassigned']){
+  const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  let hdrRow=-1;
+  for(let r=0;r<Math.min(15,data.length);r++){
+    const row=(data[r]||[]).map(h=>String(h).trim().toLowerCase());
+    if(MANAGER_ORDER.filter(m=>row.includes(m.toLowerCase())).length>=2){hdrRow=r;break;}
+  }
+  if(hdrRow===-1)throw new Error('Could not find the manager column headers in the Manager P&amp;L file. Is this the Xero Profit and Loss export grouped by Manager?');
+  const headers=(data[hdrRow]||[]).map(h=>String(h).trim());
+  const totalRows=[];
+  for(let r=hdrRow+1;r<data.length;r++){
+    const label=String((data[r]||[])[0]||'').trim();
+    const m=/^total\s+(.+)$/i.exec(label);
+    if(m)totalRows.push({label:m[1].toLowerCase(),row:r});
+  }
+  if(totalRows.length===0)throw new Error('Could not find any "Total ..." section rows in the Manager P&amp;L file. Is this the Xero Profit and Loss export?');
+  const result={};
+  for(const mgr of MANAGER_ORDER){
     const col=headers.findIndex(h=>h.toLowerCase()===mgr.toLowerCase());
     if(col===-1){result[mgr]={income:0,costs:0,net:0};continue;}
-    const income=parseNum(data[7]?.[col])+parseNum(data[8]?.[col]);
-    let costs=0;for(let r=12;r<=28;r++)costs+=parseNum(data[r]?.[col]);costs+=parseNum(data[36]?.[col]);
+    let income=0,costs=0;
+    for(const t of totalRows){
+      const v=parseNum(data[t.row]?.[col]);
+      if(isPnlIncomeTitle(t.label))income+=v;else costs+=v;
+    }
     result[mgr]={income,costs,net:income-costs};
   }
   return result;
