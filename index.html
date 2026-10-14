@@ -767,6 +767,23 @@ function buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,singleMana
     writeGroup(stdJobs,'Standard Jobs');
     writeGroup(cfJobs,'CF Projects');
 
+    // Reconciling line: P&L income/costs tagged to this manager but not to
+    // any project. Makes the section add up: subtotals + this row = total.
+    const jobsInc=sorted.reduce((s,j)=>s+j.totals.income,0);
+    const jobsCost=sorted.reduce((s,j)=>s+(j.totals.income-j.totals.net),0);
+    const gapInc=pl.income-jobsInc;
+    const gapCost=pl.costs-jobsCost;
+    if(Math.abs(gapInc)>1||Math.abs(gapCost)>1){
+      ws.getRow(r).height=18;
+      const gf=afont({italic:true,size:9,color:'FF555F6E'});
+      setCell(ws,r,1,'Not allocated to a job',{fill:fill('EDEFF3'),font:gf,alignment:{vertical:'middle',horizontal:'left',indent:2},border:true});
+      setCell(ws,r,2,gapInc,{fill:fill('EDEFF3'),font:gf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+      setCell(ws,r,3,{formula:'B'+r+'-D'+r,result:gapCost},{fill:fill('EDEFF3'),font:gf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+      setCell(ws,r,4,gapInc-gapCost,{fill:fill('EDEFF3'),font:gf,numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+      setCell(ws,r,5,'',{fill:fill('EDEFF3'),border:true});
+      r++;
+    }
+
     // Manager total
     ws.getRow(r).height=22;
     const tf=afont({bold:true,color:'FFFFFFFF'});
