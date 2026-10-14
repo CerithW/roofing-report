@@ -553,6 +553,11 @@ async function gatherFromXero(dateFrom,dateTo){
   setProgress(55,'Fetching overall P&L from Xero...');
   const plAllData=await xeroGet('/Reports/ProfitAndLoss?fromDate='+dateFrom+'&toDate='+dateTo+'&standardLayout=true',tenantId);
   const managerPL=parseApiPnL(plData,parseApiPnLTotals(plAllData));
+  // ?debug=1 → download the raw P&L API responses for diagnosis
+  if(new URLSearchParams(window.location.search).get('debug')==='1'){
+    const blob=new Blob([JSON.stringify({tracked:plData,overall:plAllData,parsed:managerPL},null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='xero_pnl_debug.json';a.click();
+  }
   // Reconcile job-tab costs against the tracked P&L: any GL source the four
   // document endpoints cannot see (payroll journals, expense claims, FX
   // revaluations) shows up here as drift rather than failing silently.
