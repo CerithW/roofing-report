@@ -590,10 +590,12 @@ function parseJobDetail(ab){
   return jobs;
 }
 
-// Parse the Manager P&L export by LABELS, not fixed row numbers: Xero adds
-// and removes account rows between months, so hardcoded row indices misread
-// the file (observed: an income account + "Total Income" double-counted).
-// The export's own "Total <section>" rows are authoritative.
+// Parse the Manager P&L export by SECTIONS, not fixed row numbers: Xero adds
+// and removes account rows between months, so hardcoded indices drift. The
+// export's "Total ..." and Gross/Net Profit rows carry no per-manager values
+// (verified on a real export), so the account DETAIL rows ("4000 - ...") are
+// the source of truth, bucketed by the section header above them.
+// Validated to the penny against the Sept 2026 export for every manager.
 function parseManagerPL(ab){
   const wb=XLSX.read(ab,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
   const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
@@ -604,24 +606,25 @@ function parseManagerPL(ab){
   }
   if(hdrRow===-1)throw new Error('Could not find the manager column headers in the Manager P&amp;L file. Is this the Xero Profit and Loss export grouped by Manager?');
   const headers=(data[hdrRow]||[]).map(h=>String(h).trim());
-  const totalRows=[];
+  const cols={};MANAGER_ORDER.forEach(m=>{cols[m]=headers.findIndex(h=>h.toLowerCase()===m.toLowerCase());});
+  const result={};MANAGER_ORDER.forEach(m=>result[m]={income:0,costs:0,net:0});
+  let incomeSection=false,sawAccount=false;
   for(let r=hdrRow+1;r<data.length;r++){
     const label=String((data[r]||[])[0]||'').trim();
-    const m=/^total\s+(.+)$/i.exec(label);
-    if(m)totalRows.push({label:m[1].toLowerCase(),row:r});
-  }
-  if(totalRows.length===0)throw new Error('Could not find any "Total ..." section rows in the Manager P&amp;L file. Is this the Xero Profit and Loss export?');
-  const result={};
-  for(const mgr of MANAGER_ORDER){
-    const col=headers.findIndex(h=>h.toLowerCase()===mgr.toLowerCase());
-    if(col===-1){result[mgr]={income:0,costs:0,net:0};continue;}
-    let income=0,costs=0;
-    for(const t of totalRows){
-      const v=parseNum(data[t.row]?.[col]);
-      if(isPnlIncomeTitle(t.label))income+=v;else costs+=v;
+    if(!label)continue;
+    if(/^\d{3,5}\s*-\s*/.test(label)){
+      sawAccount=true;
+      for(const m of MANAGER_ORDER){
+        if(cols[m]<0)continue;
+        const v=parseNum(data[r][cols[m]]);
+        if(incomeSection)result[m].income+=v;else result[m].costs+=v;
+      }
+    }else if(!/^total\s/i.test(label)){
+      incomeSection=isPnlIncomeTitle(label.toLowerCase());
     }
-    result[mgr]={income,costs,net:income-costs};
   }
+  if(!sawAccount)throw new Error('No account rows (like "4000 - Flat Felt Roofing") found in the Manager P&amp;L file. Is this the Xero Profit and Loss export grouped by Manager?');
+  MANAGER_ORDER.forEach(m=>result[m].net=result[m].income-result[m].costs);
   return result;
 }
 
