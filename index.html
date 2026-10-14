@@ -151,7 +151,10 @@ const PROXY_BASE='https://roofing-xero-proxy.roofing-gh.workers.dev';
 const CLIENT_ID='28D99854CC604670809F2C8ABFA61E12';
 const REDIRECT_URI='https://cerithw.github.io/roofing-report/';
 const XERO_AUTH='https://login.xero.com/identity/connect/authorize';
-const SCOPES='openid profile email offline_access accounting.reports.read accounting.journals.read accounting.settings.read';
+// Granular scopes — required for Xero apps created after 2 March 2026 (the
+// old broad accounting.reports.read / accounting.journals.read return
+// invalid_scope; the Journals endpoint itself is now premium-tier only).
+const SCOPES='openid profile email offline_access accounting.reports.profitandloss.read accounting.invoices.read accounting.banktransactions.read accounting.manualjournals.read accounting.settings.read';
 const PROJECT_CATEGORY='Project';
 const MANAGER_CATEGORY='Manager';
 
@@ -166,9 +169,6 @@ const MC={
   Unassigned:{dark:'444444',light:'EBEBEB',sub:'666666',btn:'#444444'}
 };
 const INCOME_KEYWORDS=['flat felt roofing','unconfirmed valuations'];
-// P&L account types in Xero journals — only these lines belong on a job report
-const PNL_ACCOUNT_TYPES=new Set(['REVENUE','SALES','OTHERINCOME','DIRECTCOSTS','EXPENSE','OVERHEADS','OTHEREXPENSE','DEPRECIATN']);
-const SOURCE_LABELS={ACCREC:'Receivable Invoice',ACCPAY:'Payable Invoice',ACCRECCREDIT:'Receivable Credit Note',ACCPAYCREDIT:'Payable Credit Note',ACCRECPAYMENT:'Receivable Payment',ACCPAYPAYMENT:'Payable Payment',ARCREDITPAYMENT:'Receivable Credit Payment',APCREDITPAYMENT:'Payable Credit Payment',CASHREC:'Receive Money',CASHPAID:'Spend Money',TRANSFER:'Bank Transfer',ARPREPAYMENT:'Receivable Prepayment',APPREPAYMENT:'Payable Prepayment',AROVERPAYMENT:'Receivable Overpayment',APOVERPAYMENT:'Payable Overpayment',EXPCLAIM:'Expense Claim',EXPPAYMENT:'Expense Payment',MANJOURNAL:'Manual Journal',PAYSLIP:'Payslip',WAGEPAYABLE:'Payroll Payable',INTEGRATEDPAYROLLPE:'Payroll Expense',INTEGRATEDPAYROLLPT:'Payroll Payment'};
 
 let currentMode='xero';
 
@@ -335,64 +335,89 @@ function parseXeroDate(s){
 function ymdUTC(d){return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');}
 function fmtUTCDateGB(d){return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();}
 
-// Xero Journals paging: 100 per call, offset = highest JournalNumber already
-// seen. Journal DATES are not in journal-number order (backdated entries), so
-// the full journal list must be scanned and filtered client-side.
-async function fetchJournals(tenantId,fromDate,toDate){
-  const journals=[];let offset=0,scanned=0,batches=0;
-  while(true){
-    const data=await xeroGet('/Journals?offset='+offset,tenantId);
-    const batch=data.Journals||[];
-    if(batch.length===0)break;
-    batches++;scanned+=batch.length;
-    for(const j of batch){
-      const d=parseXeroDate(j.JournalDate);
-      if(!d)continue;
-      const ymd=ymdUTC(d);
-      if(ymd>=fromDate&&ymd<=toDate)journals.push(j);
-    }
-    offset=batch[batch.length-1].JournalNumber;
-    setProgress(Math.min(42,12+batches),'Scanning Xero journals... '+scanned+' scanned, '+journals.length+' in period');
-    if(batch.length<100)break;
-    await sleep(1100); // stay under Xero's 60 calls/min rate limit
-  }
-  return journals;
+// ── Granular-endpoint data layer ─────────────────────────────────────
+// Xero's Journals feed is premium-tier only for apps created after March
+// 2026, so job transactions are assembled from the document endpoints that
+// remain on the standard tier: Invoices (sales + bills), Bank Transactions
+// (spend/receive money), Credit Notes, and Manual Journals. The chart of
+// accounts (Class REVENUE/EXPENSE) keeps only P&L lines.
+// NOTE: GL sources outside these four endpoints are NOT fetched and will not
+// appear on job tabs even though they remain in the manager P&L totals — in
+// particular Xero Payroll pay-run journals (system journals, not
+// ManualJournals) and expense claims. Wages must continue to be posted as
+// tracked manual journals; a runtime reconciliation in gatherFromXero warns
+// when job-tab costs diverge from the P&L.
+
+function xeroDateFilter(fromDate,toDate,extra){
+  const f=fromDate.split('-'),t=toDate.split('-');
+  let w='Date >= DateTime('+Number(f[0])+','+Number(f[1])+','+Number(f[2])+') && Date <= DateTime('+Number(t[0])+','+Number(t[1])+','+Number(t[2])+')';
+  if(extra)w+=' && '+extra;
+  return w;
 }
 
-function transformJournals(journals){
-  const jobMap={};
-  for(const j of journals){
-    const d=parseXeroDate(j.JournalDate);
-    const dateStr=d?fmtUTCDateGB(d):'';
-    const sortKey=d?d.getTime():0;
-    const source=SOURCE_LABELS[j.SourceType]||j.SourceType||'';
-    for(const line of(j.JournalLines||[])){
-      if(!PNL_ACCOUNT_TYPES.has(line.AccountType))continue;
-      const tracking=line.TrackingCategories||[];
-      const proj=tracking.find(t=>t.Name===PROJECT_CATEGORY);
-      if(!proj||!proj.Option)continue;
-      const projName=String(proj.Option).trim();
-      const mgrT=tracking.find(t=>t.Name===MANAGER_CATEGORY);
-      const mgrName=mgrT&&mgrT.Option?String(mgrT.Option).trim():'';
-      const net=Number(line.NetAmount)||0;
-      if(!jobMap[projName])jobMap[projName]=[];
-      jobMap[projName].push({
-        date:dateStr,_sort:sortKey,source:source,
-        description:String(line.Description||j.Reference||'').trim(),
-        reference:String(j.Reference||'').trim(),
-        debit:net>0?net:0,credit:net<0?-net:0,
-        account:String(line.AccountName||'').trim(),
-        manager:mgrName
-      });
-    }
+async function fetchPaged(endpoint,listKey,where,tenantId,pBase,label){
+  const items=[];let page=1;
+  while(true){
+    const data=await xeroGet('/'+endpoint+'?page='+page+'&where='+encodeURIComponent(where),tenantId);
+    const batch=data[listKey]||[];
+    items.push(...batch);
+    setProgress(Math.min(pBase+8,pBase+page),label+' — '+items.length+' fetched');
+    if(batch.length<100)break;
+    page++;await sleep(1100); // stay under Xero's 60 calls/min rate limit
   }
+  return items;
+}
+
+function docYmd(doc){
+  if(doc.DateString)return String(doc.DateString).substring(0,10);
+  const d=parseXeroDate(doc.Date);return d?ymdUTC(d):'';
+}
+function ymdToGB(ymd){return ymd?ymd.substring(8,10)+'/'+ymd.substring(5,7)+'/'+ymd.substring(0,4):'';}
+
+// Net-of-VAT line amount; sign per double-entry: positive = debit (cost),
+// negative = credit (income)
+function signedNet(doc,line,debitNormal){
+  let amt=Number(line.LineAmount)||0;
+  if((doc.LineAmountTypes||'')==='Inclusive')amt-=(Number(line.TaxAmount)||0);
+  // Document amounts are in the document's currency; convert to base (GBP).
+  // Base-currency docs have CurrencyRate 1 or none; ManualJournals have none.
+  const rate=Number(doc.CurrencyRate);
+  if(rate>0)amt=Math.round((amt/rate)*100)/100;
+  return debitNormal?amt:-amt;
+}
+
+function collectDocLines(jobMap,acctByCode,doc,lines,source,reference,debitNormal,fallbackDesc){
+  const ymd=docYmd(doc);
+  for(const line of(lines||[])){
+    const acc=acctByCode[line.AccountCode];
+    if(!acc||(acc.cls!=='REVENUE'&&acc.cls!=='EXPENSE'))continue;
+    const tracking=line.Tracking||[];
+    const proj=tracking.find(t=>t.Name===PROJECT_CATEGORY);
+    if(!proj||!proj.Option)continue;
+    const projName=String(proj.Option).trim();
+    const mgrT=tracking.find(t=>t.Name===MANAGER_CATEGORY);
+    const net=signedNet(doc,line,debitNormal);
+    if(net===0)continue;
+    if(!jobMap[projName])jobMap[projName]=[];
+    jobMap[projName].push({
+      date:ymdToGB(ymd),_sort:ymd,source:source,
+      description:String(line.Description||fallbackDesc||'').trim(),
+      reference:String(reference||'').trim(),
+      debit:net>0?net:0,credit:net<0?-net:0,
+      account:acc.name,
+      manager:mgrT&&mgrT.Option?String(mgrT.Option).trim():''
+    });
+  }
+}
+
+function assembleJobs(jobMap){
   const jobsByManager={};MANAGER_ORDER.forEach(m=>jobsByManager[m]=[]);
   const usedTabs=new Set(['\u{1F4CA} profit summary']);const jobList=[];
   const names=Object.keys(jobMap).sort((a,b)=>a.localeCompare(b));
   for(const name of names){
     const txns=jobMap[name];
     if(txns.length===0)continue;
-    txns.sort((a,b)=>a._sort-b._sort);
+    txns.sort((a,b)=>a._sort<b._sort?-1:a._sort>b._sort?1:0);
     const mgr=getDominantManager(txns);const totals=calcTotals(txns);
     let base=sanitizeTabName(name),tab=base,n=1;
     while(usedTabs.has(tab.toLowerCase())){tab=sanitizeTabName(base.substring(0,28)+' '+n);n++;}
@@ -466,18 +491,80 @@ async function gatherFromXero(dateFrom,dateTo){
   if(!cats.some(c=>c.Name===PROJECT_CATEGORY))throw new Error('No tracking category named "'+PROJECT_CATEGORY+'" found in this Xero organisation.');
   const mgrCat=cats.find(c=>c.Name===MANAGER_CATEGORY);
   if(!mgrCat)throw new Error('No tracking category named "'+MANAGER_CATEGORY+'" found in this Xero organisation.');
-  setProgress(10,'Scanning Xero journals...');
-  const journals=await fetchJournals(tenantId,dateFrom,dateTo);
-  if(journals.length===0)throw new Error('No Xero journal entries found between '+fmtDateDisplay(dateFrom)+' and '+fmtDateDisplay(dateTo)+'.');
-  setProgress(44,'Processing '+journals.length+' journal entries...');
-  const t=transformJournals(journals);
-  if(t.jobList.length===0)throw new Error('No transactions with a "'+PROJECT_CATEGORY+'" tracking category found in this period.');
+  setProgress(8,'Fetching chart of accounts...');
+  const acctData=await xeroGet('/Accounts',tenantId);
+  const acctByCode={};
+  for(const a of(acctData.Accounts||[])){
+    if(a.Code)acctByCode[a.Code]={name:String(a.Name||'').trim(),cls:a.Class};
+  }
+  await sleep(1100);
+
+  const jobMap={};
+  const docErrors=[];
+
+  setProgress(12,'Fetching invoices and bills...');
+  const invoices=await fetchPaged('Invoices','Invoices',xeroDateFilter(dateFrom,dateTo,'(Status == "AUTHORISED" || Status == "PAID")'),tenantId,12,'Invoices and bills');
+  for(const inv of invoices){
+    const isSale=inv.Type==='ACCREC';
+    collectDocLines(jobMap,acctByCode,inv,inv.LineItems,isSale?'Receivable Invoice':'Payable Invoice',inv.InvoiceNumber||inv.Reference,!isSale,inv.Contact&&inv.Contact.Name);
+  }
+  await sleep(1100);
+
+  setProgress(22,'Fetching bank transactions...');
+  const bankTxns=await fetchPaged('BankTransactions','BankTransactions',xeroDateFilter(dateFrom,dateTo,'Status == "AUTHORISED"'),tenantId,22,'Bank transactions');
+  for(const bt of bankTxns){
+    const isSpend=String(bt.Type||'').indexOf('SPEND')===0;
+    collectDocLines(jobMap,acctByCode,bt,bt.LineItems,isSpend?'Spend Money':'Receive Money',bt.Reference,isSpend,bt.Contact&&bt.Contact.Name);
+  }
+  await sleep(1100);
+
+  setProgress(30,'Fetching credit notes...');
+  try{
+    const creditNotes=await fetchPaged('CreditNotes','CreditNotes',xeroDateFilter(dateFrom,dateTo,'(Status == "AUTHORISED" || Status == "PAID")'),tenantId,30,'Credit notes');
+    for(const cn of creditNotes){
+      const isSalesCredit=cn.Type==='ACCRECCREDIT';
+      collectDocLines(jobMap,acctByCode,cn,cn.LineItems,isSalesCredit?'Receivable Credit Note':'Payable Credit Note',cn.CreditNoteNumber,isSalesCredit,cn.Contact&&cn.Contact.Name);
+    }
+  }catch(e){docErrors.push('credit notes');console.warn('CreditNotes fetch failed:',e);}
+  await sleep(1100);
+
+  setProgress(36,'Fetching manual journals...');
+  const manualJournals=await fetchPaged('ManualJournals','ManualJournals',xeroDateFilter(dateFrom,dateTo,'Status == "POSTED"'),tenantId,36,'Manual journals');
+  // Paged lists normally include JournalLines; fall back to per-journal fetch if not
+  for(let i=0;i<manualJournals.length;i++){
+    if(!manualJournals[i].JournalLines){
+      await sleep(1100);
+      const one=await xeroGet('/ManualJournals/'+manualJournals[i].ManualJournalID,tenantId);
+      manualJournals[i]=((one.ManualJournals||[])[0])||manualJournals[i];
+    }
+  }
+  for(const mj of manualJournals){
+    // Manual journal lines are already signed: positive = debit
+    collectDocLines(jobMap,acctByCode,mj,mj.JournalLines,'Manual Journal','',true,mj.Narration);
+  }
+
+  setProgress(44,'Assembling jobs...');
+  const t=assembleJobs(jobMap);
+  if(t.jobList.length===0)throw new Error('No transactions with a "'+PROJECT_CATEGORY+'" tracking category were found between '+fmtDateDisplay(dateFrom)+' and '+fmtDateDisplay(dateTo)+'.');
+  if(docErrors.length>0)showInfo('Note: could not fetch '+docErrors.join(', ')+' — those transactions are missing from the job tabs. Manager totals (from the P&amp;L) are unaffected.');
   setProgress(50,'Fetching Manager P&L from Xero...');
   const plData=await xeroGet('/Reports/ProfitAndLoss?fromDate='+dateFrom+'&toDate='+dateTo+'&trackingCategoryID='+mgrCat.TrackingCategoryID+'&standardLayout=true',tenantId);
   await sleep(1100);
   setProgress(55,'Fetching overall P&L from Xero...');
   const plAllData=await xeroGet('/Reports/ProfitAndLoss?fromDate='+dateFrom+'&toDate='+dateTo+'&standardLayout=true',tenantId);
   const managerPL=parseApiPnL(plData,parseApiPnLTotals(plAllData));
+  // Reconcile job-tab costs against the tracked P&L: any GL source the four
+  // document endpoints cannot see (payroll journals, expense claims, FX
+  // revaluations) shows up here as drift rather than failing silently.
+  const tabCosts={};
+  t.jobList.forEach(j=>{tabCosts[j.manager]=(tabCosts[j.manager]||0)+j.totals.expenses;});
+  const drifted=MANAGER_ORDER.filter(m=>m!=='Unassigned'&&Math.abs((managerPL[m]?managerPL[m].costs:0)-(tabCosts[m]||0))>1);
+  if(drifted.length>0){
+    const el=document.getElementById('infoMsg');
+    const msg='Note: P&L cost totals differ from the sum of job-tab costs for '+drifted.join(', ')+'. Transactions posted outside invoices, bank transactions, credit notes and manual journals (e.g. payroll pay-run journals or expense claims) appear in manager totals but not on job tabs.';
+    el.innerHTML=el.style.display==='block'?el.innerHTML+'<br>'+msg:msg;
+    el.style.display='block';
+  }
   return{jobsByManager:t.jobsByManager,jobList:t.jobList,managerPL:managerPL};
 }
 
