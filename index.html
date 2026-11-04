@@ -15,7 +15,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .header p{color:#6B7280;margin-top:8px;font-size:13px}
 .card{background:#23272F;border-radius:14px;padding:32px;width:100%;max-width:780px;border:1px solid #2E3340;box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .section-label{font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
-.mode-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#1A1D23;border:1px solid #2E3340;border-radius:10px;padding:6px;margin-bottom:26px}
+.mode-toggle{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#1A1D23;border:1px solid #2E3340;border-radius:10px;padding:6px;margin-bottom:26px}
 .mode-btn{padding:11px;background:none;border:none;border-radius:7px;color:#6B7280;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.2px}
 .mode-btn.active{background:#0E93C0;color:#fff}
 .mode-btn:hover:not(.active){color:#E8EAF0}
@@ -64,8 +64,6 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .xero-hero{text-align:center;padding:16px 0 10px}
 .xero-icon{font-size:50px;margin-bottom:16px}
 .xero-title{font-size:16px;font-weight:700;color:#E8EAF0;margin-bottom:10px}
-.kpi-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
-.kpi-title{font-size:16px;font-weight:700;color:#E8EAF0}
 .kpi-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px}
 .kpi-tile{background:#1A1D23;border:1px solid #2E3340;border-radius:8px;padding:10px 12px}
 .kpi-tile b{display:block;font-size:22px;font-weight:700;color:#E8EAF0}
@@ -79,7 +77,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .kpi-bands{font-size:10px;color:#6B7280}
 .kpi-cm{font-size:11px;color:#9CA3AF;margin-top:6px;line-height:1.5}
 .kpi-note{font-size:11px;color:#F59E0B;margin-bottom:10px}
-@media(max-width:560px){.kpi-tiles{grid-template-columns:repeat(2,1fr)}.date-row{grid-template-columns:1fr}}
+.kpi-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+@media(max-width:560px){.kpi-tiles{grid-template-columns:repeat(2,1fr)}.mode-btn{font-size:11px;padding:10px 4px}}
 .xero-sub{font-size:13px;color:#6B7280;margin-bottom:26px;line-height:1.7}
 </style>
 </head>
@@ -92,6 +91,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
   <div class="mode-toggle">
     <button class="mode-btn active" id="modeXeroBtn" onclick="setMode('xero')">&#9889; Connect to Xero</button>
     <button class="mode-btn" id="modeFilesBtn" onclick="setMode('files')">&#128193; Upload Files</button>
+    <button class="mode-btn" id="modeKpiBtn" onclick="setMode('kpi')">&#128678; KPI Scorecard</button>
   </div>
 
   <div id="xeroSection">
@@ -139,8 +139,18 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
       <div class="field-group"><label>From</label><input type="date" id="dateFrom"></div>
       <div class="field-group"><label>To</label><input type="date" id="dateTo"></div>
     </div>
-    <div class="field-group" style="margin-bottom:22px"><label>Secured non-framework work, £ (optional, for the KPI scorecard)</label><input type="number" id="pipelineValue" min="0" step="1000" placeholder="e.g. 850000"></div>
     <button class="generate-btn" id="generateBtn" onclick="generateReport()">Generate Report</button>
+  </div>
+
+  <div id="kpiControls" style="display:none">
+    <div class="divider"></div>
+    <div class="section-label">KPI Scorecard</div>
+    <div class="date-row">
+      <div class="field-group"><label>Month end</label><input type="date" id="kpiMonthEnd"></div>
+      <div class="field-group"><label>Secured non-framework work, &#163; (optional)</label><input type="number" id="pipelineValue" min="0" step="1000" placeholder="e.g. 850000"></div>
+    </div>
+    <button class="generate-btn" id="kpiBtn" onclick="buildKpiScorecard()">&#128678; Build KPI Scorecard</button>
+    <p class="result-sub">Scores the month against the traffic-light bands. Job and manager measures use the three months to the month end.</p>
   </div>
 
   <div class="progress" id="progressArea">
@@ -148,19 +158,21 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
     <div class="progress-text" id="progressText">Initialising...</div>
   </div>
   <div class="result" id="resultArea">
-    <div id="kpiArea" style="display:none">
-      <div class="kpi-head"><div class="kpi-title">&#128678; KPI scorecard</div><div class="result-group-label" style="margin:0">Also the first sheet of the Directors report</div></div>
-      <div class="kpi-note" id="kpiNote"></div>
-      <div class="kpi-tiles" id="kpiTiles"></div>
-      <div id="kpiList"></div>
-      <div class="result-divider"></div>
-    </div>
     <div class="result-group-label">&#128193; Directors &#8212; Full Report</div>
     <a class="download-btn" id="downloadLink" href="#" download="JRandallRoofing_Report.xlsx">&#11015; Download Full Report</a>
     <div class="result-divider"></div>
     <div class="result-group-label">&#128100; Individual Manager Reports</div>
     <div class="manager-downloads" id="managerDownloads"></div>
     <p class="result-sub">Each manager report contains only their own jobs &#8212; ready to send directly to the individual</p>
+  </div>
+  <div class="result" id="kpiResult">
+    <div class="kpi-note" id="kpiNote"></div>
+    <div class="kpi-tiles" id="kpiTiles"></div>
+    <div id="kpiList"></div>
+    <div class="kpi-actions">
+      <a class="download-btn" id="kpiDownload" href="#" download="JRandallRoofing_KPI_Scorecard.xlsx">&#11015; Download KPI Scorecard</a>
+      <button class="disc-btn" id="kpiGrant" style="display:none" onclick="connectXeroWithBalanceSheet()">Allow balance-sheet access for cash cover</button>
+    </div>
   </div>
   <div class="info-msg" id="infoMsg"></div>
   <div class="error-msg" id="errorMsg"></div>
@@ -179,8 +191,8 @@ const XERO_AUTH='https://login.xero.com/identity/connect/authorize';
 // old broad accounting.reports.read / accounting.journals.read return
 // invalid_scope; the Journals endpoint itself is now premium-tier only).
 const SCOPES='openid profile email offline_access accounting.reports.profitandloss.read accounting.invoices.read accounting.banktransactions.read accounting.manualjournals.read accounting.settings.read';
-// Balance-sheet read is requested for the KPI cash measure. If Xero rejects it
-// (invalid_scope), the page remembers that and signs in without it.
+// Requested only from the KPI tab's "Allow balance-sheet access" button —
+// the normal Sign in with Xero asks for exactly what it always has.
 const KPI_BS_SCOPE='accounting.reports.balancesheet.read';
 const PROJECT_CATEGORY='Project';
 const MANAGER_CATEGORY='Manager';
@@ -211,17 +223,23 @@ function setMode(mode){
   currentMode=mode;hideError();hideInfo();
   document.getElementById('modeXeroBtn').classList.toggle('active',mode==='xero');
   document.getElementById('modeFilesBtn').classList.toggle('active',mode==='files');
-  document.getElementById('xeroSection').style.display=mode==='xero'?'':'none';
+  document.getElementById('modeKpiBtn').classList.toggle('active',mode==='kpi');
+  document.getElementById('xeroSection').style.display=(mode==='xero'||mode==='kpi')?'':'none';
+  if(mode==='kpi'){
+    document.getElementById('resultArea').style.display='none';
+    const me=document.getElementById('kpiMonthEnd');if(!me.value)me.value=kpiDefaultMonthEnd();
+  }else{document.getElementById('kpiResult').style.display='none';}
   document.getElementById('filesSection').style.display=mode==='files'?'':'none';
   updateControls();
 }
 
 function updateControls(){
   const connected=!!localStorage.getItem('xero_at');
-  if(currentMode==='xero'){
+  document.getElementById('kpiControls').style.display=(currentMode==='kpi'&&connected)?'':'none';
+  if(currentMode==='xero'||currentMode==='kpi'){
     document.getElementById('screenConnect').style.display=connected?'none':'';
     document.getElementById('screenConnected').style.display=connected?'':'none';
-    document.getElementById('controlsSection').style.display=connected?'':'none';
+    document.getElementById('controlsSection').style.display=(connected&&currentMode==='xero')?'':'none';
     document.getElementById('generateBtn').textContent='⚡ Generate Report from Xero';
     if(connected){
       const org=localStorage.getItem('xero_org');
@@ -267,14 +285,14 @@ function switchOrg(){
 // ══════════════════════════════ XERO OAUTH ══════════════════════════════
 function randToken(){const a=new Uint8Array(24);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('');}
 
-async function connectXero(){
+async function connectXero(scopeOverride){
   const state=randToken();
   const verifier=randToken()+randToken(); // 96 chars, PKCE requires >=43
   localStorage.setItem('xero_state',state);
   localStorage.setItem('xero_pkce',verifier);
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));
   const challenge=btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  const p=new URLSearchParams({response_type:'code',client_id:CLIENT_ID,redirect_uri:REDIRECT_URI,scope:localStorage.getItem('kpi_no_bs')?SCOPES:SCOPES+' '+KPI_BS_SCOPE,state:state,code_challenge:challenge,code_challenge_method:'S256'});
+  const p=new URLSearchParams({response_type:'code',client_id:CLIENT_ID,redirect_uri:REDIRECT_URI,scope:scopeOverride||SCOPES,state:state,code_challenge:challenge,code_challenge_method:'S256'});
   window.location.href=XERO_AUTH+'?'+p.toString();
 }
 
@@ -325,6 +343,7 @@ function disconnectXero(){
   }
   ['xero_at','xero_rt','xero_exp','xero_tenant','xero_org','xero_conns','xero_state','xero_pkce'].forEach(k=>localStorage.removeItem(k));
   document.getElementById('resultArea').style.display='none';
+  document.getElementById('kpiResult').style.display='none';
   document.getElementById('progressArea').style.display='none';
   hideError();updateControls();
 }
@@ -420,7 +439,7 @@ function collectDocLines(jobMap,acctByCode,doc,lines,source,reference,debitNorma
     if(!acc||(acc.cls!=='REVENUE'&&acc.cls!=='EXPENSE'))continue;
     const tracking=line.Tracking||[];
     const proj=tracking.find(t=>t.Name===PROJECT_CATEGORY);
-    // KPI: how much direct cost carries a project tag
+    // KPI tab only: tally direct costs with/without a project tag
     if(KPI_TAG&&acc.type==='DIRECTCOSTS'){const v=signedNet(doc,line,debitNormal);KPI_TAG.total+=v;if(proj&&proj.Option)KPI_TAG.tagged+=v;}
     if(!proj||!proj.Option)continue;
     const projName=String(proj.Option).trim();
@@ -514,7 +533,6 @@ function parseApiPnLTotals(data){
 async function gatherFromXero(dateFrom,dateTo){
   const tenantId=localStorage.getItem('xero_tenant');
   if(!tenantId)throw new Error('Not connected to a Xero organisation. Please disconnect and sign in again.');
-  KPI_TAG={total:0,tagged:0};
   setProgress(4,'Checking tracking categories...');
   const catData=await xeroGet('/TrackingCategories',tenantId);
   const cats=catData.TrackingCategories||[];
@@ -897,8 +915,41 @@ function buildJobSheet(wb,jobName,tabName,transactions,manager){
 }
 
 function newWorkbook(){const wb=new ExcelJS.Workbook();wb.creator='J Randall Roofing Report Generator';wb.created=wb.modified=new Date();return wb;}
-async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList,kpiPack){const wb=newWorkbook();if(kpiPack)buildKpiSheet(wb,kpiPack.kpis,kpiPack.monthly,dateTo);buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList){const wb=newWorkbook();buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
 async function buildManagerWorkbook(manager,jobs,managerPL,dateFrom,dateTo){const wb=newWorkbook();const jbm={};MANAGER_ORDER.forEach(m=>jbm[m]=m===manager?jobs:[]);buildSummarySheet(wb,jbm,managerPL,dateFrom,dateTo,manager);const sorted=[...jobs].sort((a,b)=>b.totals.net-a.totals.net);for(const job of sorted)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+
+// ══════════════════════════════ GENERATE ══════════════════════════════
+async function generateReport(){
+  hideError();hideInfo();document.getElementById('resultArea').style.display='none';
+  const dateFrom=document.getElementById('dateFrom').value;const dateTo=document.getElementById('dateTo').value;
+  if(currentMode==='xero'&&(!dateFrom||!dateTo)){showError('Please select both a From and To date — the Xero report needs a defined period.');return;}
+  if(dateFrom&&dateTo&&dateFrom>dateTo){showError('The From date is after the To date.');return;}
+  if(currentMode==='xero'){
+    const spanDays=(new Date(dateTo+'T00:00:00Z')-new Date(dateFrom+'T00:00:00Z'))/86400000;
+    if(spanDays>365){showError('Xero limits reports to a maximum period of one year. Please pick a date range of 365 days or less.');return;}
+  }
+  const dateParts=[];if(dateFrom)dateParts.push(dateFrom.replace(/-/g,''));if(dateTo)dateParts.push(dateTo.replace(/-/g,''));
+  const btn=document.getElementById('generateBtn');btn.disabled=true;document.getElementById('progressArea').style.display='block';
+  try{
+    const data=currentMode==='xero'?await gatherFromXero(dateFrom,dateTo):await gatherFromFiles();
+    const{jobsByManager,jobList,managerPL}=data;
+    setProgress(60,'Building full directors report...');const fullUrl=await buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList);
+    const dl=document.getElementById('downloadLink');dl.href=fullUrl;dl.download=makeFilename(dateParts,'Full_Report');
+    const managerDl=document.getElementById('managerDownloads');managerDl.innerHTML='';
+    const managersWithJobs=MANAGER_ORDER.filter(m=>(jobsByManager[m]||[]).length>0);const total=managersWithJobs.length;
+    for(let i=0;i<total;i++){
+      const mgr=managersWithJobs[i];const jobs=jobsByManager[mgr];
+      setProgress(65+Math.round((i/total)*32),'Building '+mgr+'\'s report ('+(i+1)+'/'+total+')...');
+      const url=await buildManagerWorkbook(mgr,jobs,managerPL,dateFrom,dateTo);
+      const mc=MC[mgr]||MC.Unassigned;const a=document.createElement('a');
+      a.className='mgr-btn';a.style.background=mc.btn;a.href=url;a.download=makeFilename(dateParts,mgr+'_Report');a.textContent='⬇ '+mgr;
+      managerDl.appendChild(a);
+    }
+    setProgress(100,'Done — '+jobList.length+' jobs across '+total+' manager'+(total!==1?'s':''));
+    document.getElementById('resultArea').style.display='block';
+  }catch(err){console.error(err);document.getElementById('progressArea').style.display='none';setProgress(0,'');showError('<strong>Error:</strong> '+err.message);}
+  finally{btn.disabled=false;}
+}
 
 // ══════════════════════════════ KPI SCORECARD ══════════════════════════════
 // Traffic-light measures for the monthly management meeting. Everything a
@@ -1043,13 +1094,13 @@ function invBase(inv,field){const v=Number(inv[field])||0;const rate=Number(inv.
 function invDueYmd(inv){if(inv.DueDateString)return String(inv.DueDateString).substring(0,10);const d=parseXeroDate(inv.DueDate);return d?ymdUTC(d):'';}
 
 // Measures from the job report itself — available in both Xero and file mode
-function jobKpis(managerPL,jobList){
+function jobKpis(managerPL,jobList,periodLabel){
   const out={};
   const mgrs=MANAGER_ORDER.filter(m=>m!=='Unassigned'&&managerPL[m]&&managerPL[m].income>0)
     .map(m=>({m,margin:managerPL[m].net/managerPL[m].income}))
     .sort((a,b)=>a.margin-b.margin);
   if(mgrs.length){
-    out.mgr={value:mgrs[0].margin,comment:mgrs.map(x=>x.m+' '+kpiPct(x.margin)).join(' · ')+'. Manager P&L for the report period, so late supplier invoices move it.'};
+    out.mgr={value:mgrs[0].margin,comment:mgrs.map(x=>x.m+' '+kpiPct(x.margin)).join(' · ')+'. Manager P&L for '+periodLabel+', so late supplier invoices move it.'};
   }
   let inc=0,low=0,n=0;
   for(const j of jobList){
@@ -1057,7 +1108,7 @@ function jobKpis(managerPL,jobList){
     inc+=j.totals.income;
     if(j.totals.net/j.totals.income<KPI_CONFIG.lowJobMargin){low+=j.totals.income;n++;}
   }
-  if(inc>0)out.lowjobs={value:low/inc,comment:n+' job'+(n!==1?'s':'')+' worth '+kpiMoney(low)+' of '+kpiMoney(inc)+' invoiced in the period. Check for missing supplier invoices before acting.'};
+  if(inc>0)out.lowjobs={value:low/inc,comment:n+' job'+(n!==1?'s':'')+' worth '+kpiMoney(low)+' of '+kpiMoney(inc)+' invoiced in '+periodLabel+'. Check for missing supplier invoices before acting.'};
   return out;
 }
 
@@ -1120,7 +1171,7 @@ async function gatherKpisFromXero(dateTo,tenantId,pipelineValue){
     const bs=await xeroGet('/Reports/BalanceSheet?date='+dateTo+'&standardLayout=true',tenantId);
     const cash=balanceSheetBank(bs);
     if(cash!==null&&out._avgCost>0)out.cashcover={value:cash/out._avgCost,comment:'Bank '+kpiMoney(cash)+' at '+fmtDateDisplay(dateTo)+' ÷ average monthly costs '+kpiMoney(out._avgCost)+' this year.'};
-  }catch(e){notes.push('balance sheet (disconnect and sign in again to grant balance-sheet access)');console.warn(e);}
+  }catch(e){notes.push('balance sheet — use "Allow balance-sheet access" below to add cash cover');console.warn(e);}
   await sleep(1100);
 
   setProgress(63,'KPIs: debtors and creditors...');
@@ -1157,7 +1208,7 @@ async function gatherKpisFromXero(dateTo,tenantId,pipelineValue){
   const runway=(Number(end.substring(0,4))-Number(dateTo.substring(0,4)))*12+(Number(end.substring(5,7))-Number(dateTo.substring(5,7)));
   out.runway={value:Math.max(0,runway),comment:'Framework extension ends '+fmtDateDisplay(end)+'.'};
 
-  if(KPI_TAG&&KPI_TAG.total>0)out.tagged={value:KPI_TAG.tagged/KPI_TAG.total,comment:kpiMoney(KPI_TAG.total-KPI_TAG.tagged)+' of '+kpiMoney(KPI_TAG.total)+' direct costs in the period have no project. Payroll pay-run journals are not included.'};
+  if(KPI_TAG&&KPI_TAG.total>0)out.tagged={value:KPI_TAG.tagged/KPI_TAG.total,comment:kpiMoney(KPI_TAG.total-KPI_TAG.tagged)+' of '+kpiMoney(KPI_TAG.total)+' direct costs in the job period have no project. Payroll pay-run journals are not included.'};
   if(pipelineValue>0)out.pipeline={value:pipelineValue/KPI_CONFIG.breakEvenSales,comment:kpiMoney(pipelineValue)+' entered ÷ break-even '+kpiMoney(KPI_CONFIG.breakEvenSales)+' a month.'};
 
   delete out._avgCost;
@@ -1170,8 +1221,7 @@ function assembleKpis(values,mode){
     const value=v?v.value:null;
     let comment=v?v.comment:'';
     if(!v){
-      if(id==='pipeline')comment='Enter the secured order book (excluding the framework) above Generate to score this.';
-      else if(mode!=='xero')comment='Needs the Xero connection.';
+      if(id==='pipeline')comment='Enter the secured order book (excluding the framework) to score this.';
       else comment='Not enough data in Xero for this period.';
     }
     return{id,group,name,value,display:kpiFmt(value,b.unit),status:kpiStatus(value,b),bands:kpiBandText(b),comment};
@@ -1179,7 +1229,6 @@ function assembleKpis(values,mode){
 }
 
 function renderKpis(kpis,notes){
-  const area=document.getElementById('kpiArea');
   const counts={Red:0,Amber:0,Green:0,'Not measured':0};kpis.forEach(k=>counts[k.status]++);
   const tiles=document.getElementById('kpiTiles');tiles.replaceChildren();
   ['Red','Amber','Green','Not measured'].forEach(s=>{
@@ -1207,7 +1256,6 @@ function renderKpis(kpis,notes){
   }
   const note=document.getElementById('kpiNote');
   note.textContent=notes&&notes.length?'Could not read from Xero: '+notes.join('; ')+'. Those measures show as not measured.':'';
-  area.style.display='block';
 }
 
 function buildKpiSheet(wb,kpis,monthly,dateTo){
@@ -1217,7 +1265,7 @@ function buildKpiSheet(wb,kpis,monthly,dateTo){
   ws.getRow(r).height=32;ws.mergeCells(r,1,r,6);
   setCell(ws,r,1,'J Randall Roofing Contractors Ltd — KPI Scorecard',{fill:fill('1A1D23'),font:afont({size:15,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
   ws.mergeCells(r,1,r,6);
-  setCell(ws,r,1,'Month to '+fmtDateDisplay(dateTo)+' · live from Xero, unadjusted · generated '+fmtDateDisplay(ymdUTC(new Date())),{fill:fill('2E3340'),font:afont({size:9,color:'FFB0B8C8'}),alignment:{vertical:'middle',horizontal:'center'}});r+=2;
+  setCell(ws,r,1,'Month ending '+fmtDateDisplay(dateTo)+' · live from Xero, unadjusted · generated '+fmtDateDisplay(ymdUTC(new Date())),{fill:fill('2E3340'),font:afont({size:9,color:'FFB0B8C8'}),alignment:{vertical:'middle',horizontal:'center'}});r+=2;
   ['Area','Measure','Value','Status','Bands','Comment'].forEach((h,ci)=>setCell(ws,r,ci+1,h,{fill:fill('0A3D5C'),font:afont({bold:true,size:9,color:'FFFFFFFF'}),alignment:{vertical:'middle'},border:true}));r++;
   for(const k of kpis){
     const rag=KPI_RAG[k.status];
@@ -1245,62 +1293,56 @@ function buildKpiSheet(wb,kpis,monthly,dateTo){
   }
 }
 
-// ══════════════════════════════ GENERATE ══════════════════════════════
-async function generateReport(){
-  hideError();hideInfo();document.getElementById('resultArea').style.display='none';document.getElementById('kpiArea').style.display='none';
-  const dateFrom=document.getElementById('dateFrom').value;const dateTo=document.getElementById('dateTo').value;
-  if(currentMode==='xero'&&(!dateFrom||!dateTo)){showError('Please select both a From and To date — the Xero report needs a defined period.');return;}
-  if(dateFrom&&dateTo&&dateFrom>dateTo){showError('The From date is after the To date.');return;}
-  if(currentMode==='xero'){
-    const spanDays=(new Date(dateTo+'T00:00:00Z')-new Date(dateFrom+'T00:00:00Z'))/86400000;
-    if(spanDays>365){showError('Xero limits reports to a maximum period of one year. Please pick a date range of 365 days or less.');return;}
-  }
-  const dateParts=[];if(dateFrom)dateParts.push(dateFrom.replace(/-/g,''));if(dateTo)dateParts.push(dateTo.replace(/-/g,''));
-  const btn=document.getElementById('generateBtn');btn.disabled=true;document.getElementById('progressArea').style.display='block';
+// ── The KPI tab: its own controls, its own download. It reuses the job
+// report's Xero pull (gatherFromXero) read-only; the job report tab itself is
+// untouched, and the tagging tally (KPI_TAG) stays off unless this tab runs.
+function kpiDefaultMonthEnd(){return ymdAddDays(ymdMonthStart(ymdUTC(new Date())),-1);}
+function connectXeroWithBalanceSheet(){localStorage.setItem('kpi_bs_requested','1');connectXero(SCOPES+' '+KPI_BS_SCOPE);}
+
+async function buildKpiScorecard(){
+  hideError();hideInfo();
+  document.getElementById('kpiResult').style.display='none';
+  const monthEnd=document.getElementById('kpiMonthEnd').value;
+  if(!monthEnd){showError('Pick the month end to score.');return;}
+  const tenantId=localStorage.getItem('xero_tenant');
+  if(!tenantId){showError('Not connected to a Xero organisation. Please disconnect and sign in again.');return;}
+  const btn=document.getElementById('kpiBtn');btn.disabled=true;
+  document.getElementById('progressArea').style.display='block';
   try{
-    const data=currentMode==='xero'?await gatherFromXero(dateFrom,dateTo):await gatherFromFiles();
-    const{jobsByManager,jobList,managerPL}=data;
-    // KPI scorecard: never allowed to stop the job report from generating
-    let kpiPack=null;
+    const pipelineValue=Number(document.getElementById('pipelineValue').value)||0;
+    const jobFrom=ymdAddMonths(ymdMonthStart(monthEnd),-2);
+    const periodLabel=monthLabel(jobFrom)+'–'+monthLabel(ymdMonthStart(monthEnd));
+    let values={},notes=[];
+    KPI_TAG={total:0,tagged:0};
     try{
-      const pipelineValue=Number(document.getElementById('pipelineValue').value)||0;
-      let values=jobKpis(managerPL,jobList),notes=[],monthly=[];
-      if(currentMode==='xero'){
-        const x=await gatherKpisFromXero(dateTo,localStorage.getItem('xero_tenant'),pipelineValue);
-        values=Object.assign({},x.values,values);notes=x.notes;monthly=x.monthly;
-      }else if(pipelineValue>0){
-        values.pipeline={value:pipelineValue/KPI_CONFIG.breakEvenSales,comment:kpiMoney(pipelineValue)+' entered ÷ break-even '+kpiMoney(KPI_CONFIG.breakEvenSales)+' a month.'};
-      }
-      const kpis=assembleKpis(values,currentMode);
-      kpiPack={kpis:kpis,monthly:monthly};
-      renderKpis(kpis,notes);
-    }catch(e){console.error(e);showInfo('The KPI scorecard could not be built ('+String(e.message||e).substring(0,200)+'). The job reports are unaffected.');}
-    finally{KPI_TAG=null;}
-    setProgress(70,'Building full directors report...');const fullUrl=await buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList,kpiPack);
-    const dl=document.getElementById('downloadLink');dl.href=fullUrl;dl.download=makeFilename(dateParts,'Full_Report');
-    const managerDl=document.getElementById('managerDownloads');managerDl.innerHTML='';
-    const managersWithJobs=MANAGER_ORDER.filter(m=>(jobsByManager[m]||[]).length>0);const total=managersWithJobs.length;
-    for(let i=0;i<total;i++){
-      const mgr=managersWithJobs[i];const jobs=jobsByManager[mgr];
-      setProgress(75+Math.round((i/total)*22),'Building '+mgr+'\'s report ('+(i+1)+'/'+total+')...');
-      const url=await buildManagerWorkbook(mgr,jobs,managerPL,dateFrom,dateTo);
-      const mc=MC[mgr]||MC.Unassigned;const a=document.createElement('a');
-      a.className='mgr-btn';a.style.background=mc.btn;a.href=url;a.download=makeFilename(dateParts,mgr+'_Report');a.textContent='⬇ '+mgr;
-      managerDl.appendChild(a);
-    }
-    setProgress(100,'Done — '+jobList.length+' jobs across '+total+' manager'+(total!==1?'s':''));
-    document.getElementById('resultArea').style.display='block';
+      const d=await gatherFromXero(jobFrom,monthEnd);
+      values=jobKpis(d.managerPL,d.jobList,periodLabel);
+    }catch(e){console.warn(e);notes.push('job and manager figures ('+String(e.message||e).substring(0,120)+')');KPI_TAG=null;}
+    await sleep(1100);
+    const x=await gatherKpisFromXero(monthEnd,tenantId,pipelineValue);
+    values=Object.assign({},x.values,values);
+    notes=notes.concat(x.notes);
+    const kpis=assembleKpis(values,'xero');
+    renderKpis(kpis,notes);
+    setProgress(95,'Building KPI workbook...');
+    const wb=newWorkbook();buildKpiSheet(wb,kpis,x.monthly,monthEnd);
+    const a=document.getElementById('kpiDownload');
+    a.href=blobUrl(await wb.xlsx.writeBuffer());
+    a.download=makeFilename([monthEnd.replace(/-/g,'')],'KPI_Scorecard');
+    document.getElementById('kpiGrant').style.display=values.cashcover?'none':'';
+    setProgress(100,'Done — '+kpis.filter(k=>k.status==='Red').length+' red, '+kpis.filter(k=>k.status==='Amber').length+' amber, '+kpis.filter(k=>k.status==='Green').length+' green');
+    document.getElementById('kpiResult').style.display='block';
   }catch(err){console.error(err);document.getElementById('progressArea').style.display='none';setProgress(0,'');showError('<strong>Error:</strong> '+err.message);}
-  finally{btn.disabled=false;}
+  finally{KPI_TAG=null;btn.disabled=false;}
 }
 
 // ══════════════════════════════ STARTUP ══════════════════════════════
 window.addEventListener('load',async()=>{
   const params=new URLSearchParams(window.location.search);
-  if(params.get('error')==='invalid_scope'&&!localStorage.getItem('kpi_no_bs')){
-    localStorage.setItem('kpi_no_bs','1');
-    setMode('xero');
-    showError('Xero would not grant balance-sheet access to this app, so it has been dropped. <strong>Click "Sign in with Xero" again</strong> — everything works except the KPI cash-cover measure. To add it back, enable the balance sheet scope on the Xero app and clear this browser\'s site data.');
+  if(params.has('error')&&localStorage.getItem('kpi_bs_requested')){
+    localStorage.removeItem('kpi_bs_requested');
+    setMode('kpi');
+    showError('Xero did not grant balance-sheet access ('+params.get('error')+'). It probably needs switching on for this app in the Xero developer portal. Your existing connection is unchanged; everything except cash cover still works.');
     window.history.replaceState({},'',window.location.pathname);
     return;
   }
@@ -1336,6 +1378,7 @@ window.addEventListener('load',async()=>{
       showError('<strong>Sign-in error:</strong> '+err.message+'<br>Please click "Sign in with Xero" to try again.');
     }
     window.history.replaceState({},'',window.location.pathname);
+    if(localStorage.getItem('kpi_bs_requested')){localStorage.removeItem('kpi_bs_requested');setMode('kpi');}
     updateControls();return;
   }
   setMode('xero');
