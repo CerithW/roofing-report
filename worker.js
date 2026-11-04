@@ -10,6 +10,7 @@
  *   POST /token        — OAuth token exchange / refresh (adds client credentials)
  *   GET  /connections  — proxy to https://api.xero.com/connections
  *   GET  /api/<path>   — proxy to https://api.xero.com/api.xro/2.0/<path>
+ *   POST /api/ManualJournals — create a manual journal (CT Estimate drafts)
  */
 
 const ALLOWED_ORIGIN = 'https://cerithw.github.io';
@@ -95,6 +96,25 @@ export default {
           'Authorization': request.headers.get('Authorization') || '',
           'Accept': 'application/json',
         },
+      });
+      return new Response(await res.text(), {
+        status: res.status, headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // The only write the proxy forwards: creating a manual journal (the CT
+    // Estimate tab sends these as DRAFT for review). Everything else stays
+    // read-only.
+    if (url.pathname === '/api/ManualJournals' && request.method === 'POST') {
+      const res = await fetch('https://api.xero.com/api.xro/2.0/ManualJournals', {
+        method: 'POST',
+        headers: {
+          'Authorization': request.headers.get('Authorization') || '',
+          'Xero-Tenant-Id': request.headers.get('Xero-Tenant-Id') || '',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: await request.text(),
       });
       return new Response(await res.text(), {
         status: res.status, headers: { ...cors, 'Content-Type': 'application/json' },

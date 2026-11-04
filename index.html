@@ -15,7 +15,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .header p{color:#6B7280;margin-top:8px;font-size:13px}
 .card{background:#23272F;border-radius:14px;padding:32px;width:100%;max-width:780px;border:1px solid #2E3340;box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .section-label{font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
-.mode-toggle{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#1A1D23;border:1px solid #2E3340;border-radius:10px;padding:6px;margin-bottom:26px}
+.mode-toggle{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:#1A1D23;border:1px solid #2E3340;border-radius:10px;padding:6px;margin-bottom:26px}
 .mode-btn{padding:11px;background:none;border:none;border-radius:7px;color:#6B7280;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.2px}
 .mode-btn.active{background:#0E93C0;color:#fff}
 .mode-btn:hover:not(.active){color:#E8EAF0}
@@ -78,7 +78,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .kpi-cm{font-size:11px;color:#9CA3AF;margin-top:6px;line-height:1.5}
 .kpi-note{font-size:11px;color:#F59E0B;margin-bottom:10px}
 .kpi-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
-@media(max-width:560px){.kpi-tiles{grid-template-columns:repeat(2,1fr)}.mode-btn{font-size:11px;padding:10px 4px}}
+.ct-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px}
+.ct-table td{padding:7px 4px;border-bottom:1px solid #2E3340;color:#C9CED8}
+.ct-table td:last-child{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ct-table tr.ct-tot td{color:#E8EAF0;font-weight:700}
+.ct-table tr.ct-big td{color:#22C55E;font-weight:700;font-size:15px;border-bottom:none}
+.ct-sub{font-size:11px;color:#9CA3AF;line-height:1.6;margin-bottom:8px}
+@media(max-width:560px){.kpi-tiles{grid-template-columns:repeat(2,1fr)}.mode-toggle{grid-template-columns:1fr 1fr}.mode-btn{font-size:12px;padding:10px 4px}}
 .xero-sub{font-size:13px;color:#6B7280;margin-bottom:26px;line-height:1.7}
 </style>
 </head>
@@ -92,6 +98,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
     <button class="mode-btn active" id="modeXeroBtn" onclick="setMode('xero')">&#9889; Connect to Xero</button>
     <button class="mode-btn" id="modeFilesBtn" onclick="setMode('files')">&#128193; Upload Files</button>
     <button class="mode-btn" id="modeKpiBtn" onclick="setMode('kpi')">&#128678; KPI Scorecard</button>
+    <button class="mode-btn" id="modeCtBtn" onclick="setMode('ct')">&#129534; CT Estimate</button>
   </div>
 
   <div id="xeroSection">
@@ -153,6 +160,18 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
     <p class="result-sub">Scores the month against the traffic-light bands. Job and manager measures use the three months to the month end.</p>
   </div>
 
+  <div id="ctControls" style="display:none">
+    <div class="divider"></div>
+    <div class="section-label">Corporation tax estimate</div>
+    <div class="date-row">
+      <div class="field-group"><label>Month end</label><input type="date" id="ctMonthEnd"></div>
+      <div class="field-group"><label>Capital allowances to date, &#163;</label><input type="number" id="ctCA" step="100" placeholder="Filled from fixed asset additions" oninput="ctRecompute()"></div>
+    </div>
+    <div class="field-group" style="margin-bottom:22px"><label>Other tax adjustments, &#163; (+ adds to profit, &#8722; reduces it)</label><input type="number" id="ctAdj" step="100" placeholder="0" oninput="ctRecompute()"></div>
+    <button class="generate-btn" id="ctBtn" onclick="ctCalculate()">&#129534; Work out CT estimate</button>
+    <p class="result-sub">Nothing is created in Xero until you press the draft journal button &#8212; and then only as a draft for review.</p>
+  </div>
+
   <div class="progress" id="progressArea">
     <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar" style="width:0%"></div></div>
     <div class="progress-text" id="progressText">Initialising...</div>
@@ -173,6 +192,18 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
       <a class="download-btn" id="kpiDownload" href="#" download="JRandallRoofing_KPI_Scorecard.xlsx">&#11015; Download KPI Scorecard</a>
       <button class="disc-btn" id="kpiGrant" style="display:none" onclick="connectXeroWithBalanceSheet()">Allow balance-sheet access for cash cover</button>
     </div>
+  </div>
+  <div class="result" id="ctResult">
+    <div class="kpi-note" id="ctNotes"></div>
+    <table class="ct-table"><tbody id="ctLines"></tbody></table>
+    <p class="ct-sub" id="ctAdditions"></p>
+    <p class="ct-sub" id="ctInstal"></p>
+    <div class="kpi-actions">
+      <button class="generate-btn" id="ctPostBtn" style="width:auto;padding:12px 20px" onclick="ctPostDraft()">Create draft journal in Xero</button>
+      <button class="disc-btn" id="ctGrantWrite" style="display:none" onclick="connectXeroWithExtra(XERO_WRITE_JOURNALS_SCOPE)">Allow posting journals</button>
+      <button class="disc-btn" id="ctGrantBS" style="display:none" onclick="connectXeroWithBalanceSheet()">Allow balance-sheet access</button>
+    </div>
+    <p class="ct-sub" id="ctPosted" style="color:#22C55E;margin-top:10px"></p>
   </div>
   <div class="info-msg" id="infoMsg"></div>
   <div class="error-msg" id="errorMsg"></div>
@@ -224,11 +255,14 @@ function setMode(mode){
   document.getElementById('modeXeroBtn').classList.toggle('active',mode==='xero');
   document.getElementById('modeFilesBtn').classList.toggle('active',mode==='files');
   document.getElementById('modeKpiBtn').classList.toggle('active',mode==='kpi');
-  document.getElementById('xeroSection').style.display=(mode==='xero'||mode==='kpi')?'':'none';
-  if(mode==='kpi'){
+  document.getElementById('modeCtBtn').classList.toggle('active',mode==='ct');
+  document.getElementById('xeroSection').style.display=(mode==='xero'||mode==='kpi'||mode==='ct')?'':'none';
+  if(mode==='kpi'||mode==='ct'){
     document.getElementById('resultArea').style.display='none';
-    const me=document.getElementById('kpiMonthEnd');if(!me.value)me.value=kpiDefaultMonthEnd();
-  }else{document.getElementById('kpiResult').style.display='none';}
+    const me=document.getElementById(mode==='ct'?'ctMonthEnd':'kpiMonthEnd');if(!me.value)me.value=kpiDefaultMonthEnd();
+  }
+  if(mode!=='kpi')document.getElementById('kpiResult').style.display='none';
+  if(mode!=='ct')document.getElementById('ctResult').style.display='none';
   document.getElementById('filesSection').style.display=mode==='files'?'':'none';
   updateControls();
 }
@@ -236,7 +270,8 @@ function setMode(mode){
 function updateControls(){
   const connected=!!localStorage.getItem('xero_at');
   document.getElementById('kpiControls').style.display=(currentMode==='kpi'&&connected)?'':'none';
-  if(currentMode==='xero'||currentMode==='kpi'){
+  document.getElementById('ctControls').style.display=(currentMode==='ct'&&connected)?'':'none';
+  if(currentMode==='xero'||currentMode==='kpi'||currentMode==='ct'){
     document.getElementById('screenConnect').style.display=connected?'none':'';
     document.getElementById('screenConnected').style.display=connected?'':'none';
     document.getElementById('controlsSection').style.display=(connected&&currentMode==='xero')?'':'none';
@@ -344,6 +379,8 @@ function disconnectXero(){
   ['xero_at','xero_rt','xero_exp','xero_tenant','xero_org','xero_conns','xero_state','xero_pkce'].forEach(k=>localStorage.removeItem(k));
   document.getElementById('resultArea').style.display='none';
   document.getElementById('kpiResult').style.display='none';
+  document.getElementById('ctResult').style.display='none';
+  localStorage.removeItem('xero_extra_scopes');
   document.getElementById('progressArea').style.display='none';
   hideError();updateControls();
 }
@@ -1144,7 +1181,7 @@ async function gatherKpisFromXero(dateTo,tenantId,pipelineValue){
     if(fys>0){
       const lab=fy.reduce((s,m)=>s+sumAccts(m.accounts,KPI_CONFIG.labourAccounts),0);
       const mat=fy.reduce((s,m)=>s+sumAccts(m.accounts,KPI_CONFIG.materialsAccounts),0);
-      const opx=fy.reduce((s,m)=>s+m.opex,0);
+      const opx=fy.reduce((s,m)=>s+m.opex-sumAccts(m.accounts,KPI_CONFIG.taxAccounts),0);
       out.labour={value:lab/fys,comment:kpiMoney(lab)+' of '+kpiMoney(fys)+' sales since '+fmtDateDisplay(fyStart)+'.'};
       out.materials={value:mat/fys,comment:kpiMoney(mat)+' of '+kpiMoney(fys)+' sales.'};
       out.overheads={value:opx/fys,comment:kpiMoney(opx)+' as posted — check depreciation, SIPP and payroll are in before relying on it.'};
@@ -1297,7 +1334,16 @@ function buildKpiSheet(wb,kpis,monthly,dateTo){
 // report's Xero pull (gatherFromXero) read-only; the job report tab itself is
 // untouched, and the tagging tally (KPI_TAG) stays off unless this tab runs.
 function kpiDefaultMonthEnd(){return ymdAddDays(ymdMonthStart(ymdUTC(new Date())),-1);}
-function connectXeroWithBalanceSheet(){localStorage.setItem('kpi_bs_requested','1');connectXero(SCOPES+' '+KPI_BS_SCOPE);}
+// Extra Xero permissions are only ever requested from the KPI and CT tabs'
+// buttons, never from the main Sign in. Granted ones are remembered so a
+// later extra request keeps them; the org you were on is kept too.
+function grantedExtraScopes(){try{return JSON.parse(localStorage.getItem('xero_extra_scopes')||'[]');}catch(_){return[];}}
+function connectXeroWithExtra(scope){
+  const want=Array.from(new Set(grantedExtraScopes().concat([scope])));
+  localStorage.setItem('xero_extra_pending',JSON.stringify({scopes:want,mode:currentMode,tenant:localStorage.getItem('xero_tenant')}));
+  connectXero(SCOPES+' '+want.join(' '));
+}
+function connectXeroWithBalanceSheet(){connectXeroWithExtra(KPI_BS_SCOPE);}
 
 async function buildKpiScorecard(){
   hideError();hideInfo();
@@ -1336,13 +1382,231 @@ async function buildKpiScorecard(){
   finally{KPI_TAG=null;btn.disabled=false;}
 }
 
+// ══════════════════════════════ CT ESTIMATE ══════════════════════════════
+// Monthly corporation tax provision. Works out the tax on profit for the year
+// to date, compares it with what has already been charged, and creates the
+// top-up as a DRAFT manual journal for someone to review and post in Xero.
+// It never posts a journal as final. Account codes and adjustments: CT_CONFIG.
+const CT_CONFIG={
+  narrationPrefix:'CT estimate',
+  expenseAccount:'7012',           // Dr — Corporation Tax Expense
+  liabilityAccount:'2320',         // Cr — Corporation Tax
+  taxExpenseAccounts:['7012','9997'],
+  // Added back to accounting profit (code: label)
+  addBack:{'8000':'Depreciation','6901':'Depreciation in cost of sales','7403':'UK entertainment'},
+  // Taken off accounting profit (code: label)
+  deduct:{'4200':'Sale of assets (proceeds)'},
+  // Fixed-asset cost accounts whose additions this year are offered as capital allowances
+  caAccounts:{'0020':'Plant and machinery','0030':'Office equipment','0040':'Furniture and fixtures','0050':'Motor vehicles'},
+  associatedCompanies:1,           // Lladnar Holdings
+  mainRate:0.25,smallRate:0.19,lowerLimit:50000,upperLimit:250000,marginalFraction:3/200,
+  largeThreshold:1500000,
+  priorYearLarge:false             // set true once a year has been "large" — instalments then apply
+};
+const XERO_WRITE_JOURNALS_SCOPE='accounting.manualjournals';
+
+let ctLast=null;
+
+function ctMoney(v){return(v<0?'−':'')+'£'+Math.abs(Math.round(v)).toLocaleString('en-GB');}
+function monthsBetweenInclusive(fromYmd,toYmd){return(Number(toYmd.substring(0,4))-Number(fromYmd.substring(0,4)))*12+(Number(toYmd.substring(5,7))-Number(fromYmd.substring(5,7)))+1;}
+
+// Account amounts from a single-column report (P&L or balance sheet), keyed by code
+function reportByCode(data,idToCode,nameToCode){
+  const out={};
+  const report=(data.Reports||[])[0];if(!report)return out;
+  const walk=(rows)=>{for(const row of(rows||[])){
+    if(row.RowType==='Section'){walk(row.Rows);continue;}
+    if(row.RowType!=='Row')continue;
+    const cells=row.Cells||[];
+    let code=null;
+    for(const c of cells){for(const a of(c.Attributes||[])){if(a.Id==='account'&&idToCode[a.Value])code=idToCode[a.Value];}}
+    if(!code)code=nameToCode[String((cells[0]||{}).Value||'').trim().toLowerCase()];
+    if(!code)continue;
+    out[code]=(out[code]||0)+pnlAmt(cells[1]);
+  }};
+  walk(report.Rows);
+  return out;
+}
+
+// Main rate / small profits rate / marginal relief, limits divided by
+// (1 + associated companies) and pro-rated to the months elapsed
+function ctCharge(profit,months){
+  const c=CT_CONFIG,div=1+c.associatedCompanies,f=months/12;
+  const L=c.lowerLimit/div*f,U=c.upperLimit/div*f;
+  if(profit<=0)return{tax:0,basis:'No taxable profit'};
+  if(profit<=L)return{tax:profit*c.smallRate,basis:'Small profits rate '+(c.smallRate*100)+'%'};
+  if(profit>=U)return{tax:profit*c.mainRate,basis:'Main rate '+(c.mainRate*100)+'% (upper limit '+ctMoney(U)+' for '+months+' months, '+div+' companies)'};
+  const tax=profit*c.mainRate-c.marginalFraction*(U-profit);
+  return{tax:tax,basis:'Main rate less marginal relief (limits '+ctMoney(L)+'–'+ctMoney(U)+')'};
+}
+
+function ctInstalmentNote(profit,months,fyStart){
+  const c=CT_CONFIG,thr=c.largeThreshold/(1+c.associatedCompanies);
+  const annual=profit*12/months;
+  if(annual<=thr)return 'Annualised profit '+ctMoney(annual)+' is under the '+ctMoney(thr)+' large-company limit: tax due 9 months and 1 day after the year end.';
+  if(!c.priorYearLarge&&annual<=10000000)return 'Annualised profit '+ctMoney(annual)+' is over the '+ctMoney(thr)+' limit, but the company was not large last year, so the first-year exemption should apply: no instalments this year. Next year they will if profit stays above the limit.';
+  const due=[7,10,13,16].map(n=>{const d=new Date(fyStart+'T00:00:00Z');d.setUTCMonth(d.getUTCMonth()+n-1);d.setUTCDate(14);return fmtDateDisplay(ymdUTC(d));});
+  return 'Large company: quarterly instalments due '+due.join(', ')+'.';
+}
+
+async function ctGather(monthEnd,tenantId){
+  const notes=[];
+  setProgress(10,'CT: financial year...');
+  let fyStart;
+  try{const org=((await xeroGet('/Organisation',tenantId)).Organisations||[])[0]||{};fyStart=fyStartFor(monthEnd,Number(org.FinancialYearEndDay)||31,Number(org.FinancialYearEndMonth)||3);}
+  catch(e){fyStart=fyStartFor(monthEnd,31,3);notes.push('Financial year assumed to start 1 April.');}
+  await sleep(1100);
+  setProgress(25,'CT: chart of accounts...');
+  const accts=(await xeroGet('/Accounts',tenantId)).Accounts||[];
+  const idToCode={},nameToCode={},codeToName={};
+  for(const a of accts){if(!a.Code)continue;idToCode[a.AccountID]=a.Code;nameToCode[String(a.Name||'').trim().toLowerCase()]=a.Code;codeToName[a.Code]=String(a.Name||'').trim();}
+  for(const code of[CT_CONFIG.expenseAccount,CT_CONFIG.liabilityAccount])if(!codeToName[code])throw new Error('Account '+code+' is not in this Xero chart of accounts — set CT_CONFIG to this client\'s corporation tax accounts.');
+  await sleep(1100);
+  setProgress(45,'CT: profit and loss to date...');
+  const pl=await xeroGet('/Reports/ProfitAndLoss?fromDate='+fyStart+'&toDate='+monthEnd+'&standardLayout=true',tenantId);
+  const tot=parseApiPnLTotals(pl);
+  const byCode=reportByCode(pl,idToCode,nameToCode);
+  await sleep(1100);
+  // Capital allowances: additions to fixed-asset cost accounts since the year start
+  setProgress(65,'CT: fixed asset additions...');
+  let additions=null;
+  try{
+    const open=await xeroGet('/Reports/BalanceSheet?date='+ymdAddDays(fyStart,-1)+'&standardLayout=true',tenantId);await sleep(1100);
+    const close=await xeroGet('/Reports/BalanceSheet?date='+monthEnd+'&standardLayout=true',tenantId);
+    const o=reportByCode(open,idToCode,nameToCode),c=reportByCode(close,idToCode,nameToCode);
+    additions=Object.keys(CT_CONFIG.caAccounts).map(code=>({code,label:CT_CONFIG.caAccounts[code],amount:Math.max(0,(c[code]||0)-(o[code]||0))}));
+  }catch(e){console.warn(e);notes.push('Fixed asset additions need balance-sheet access — enter capital allowances by hand, or use "Allow balance-sheet access".');}
+  await sleep(1100);
+  setProgress(85,'CT: draft journals already waiting...');
+  let drafts=[];
+  try{
+    const mj=await fetchPaged('ManualJournals','ManualJournals',xeroDateFilter(fyStart,monthEnd,'Status == "DRAFT"'),tenantId,85,'Draft journals');
+    drafts=mj.filter(j=>String(j.Narration||'').indexOf(CT_CONFIG.narrationPrefix)===0).map(j=>({date:docYmd(j),narration:j.Narration}));
+  }catch(e){console.warn(e);notes.push('Could not check for existing draft CT journals.');}
+  return{fyStart,monthEnd,months:monthsBetweenInclusive(fyStart,monthEnd),tot,byCode,codeToName,additions,drafts,notes};
+}
+
+// Pure computation — kept separate so it can be checked by hand
+function ctCompute(g,caClaim,extraAdj){
+  const provided=CT_CONFIG.taxExpenseAccounts.reduce((s,c)=>s+(g.byCode[c]||0),0);
+  const pbt=g.tot.income-g.tot.costs+provided;   // tax charge sits in overheads: add it back
+  const lines=[{label:'Profit before tax, '+fmtDateDisplay(g.fyStart)+' to '+fmtDateDisplay(g.monthEnd),amount:pbt}];
+  for(const code in CT_CONFIG.addBack){const v=g.byCode[code]||0;if(v)lines.push({label:'Add: '+CT_CONFIG.addBack[code]+' ('+code+')',amount:v});}
+  for(const code in CT_CONFIG.deduct){const v=g.byCode[code]||0;if(v)lines.push({label:'Less: '+CT_CONFIG.deduct[code]+' ('+code+')',amount:-v});}
+  if(extraAdj)lines.push({label:'Other adjustments (entered)',amount:extraAdj});
+  if(caClaim)lines.push({label:'Less: capital allowances (entered)',amount:-caClaim});
+  const taxable=lines.reduce((s,l)=>s+l.amount,0);
+  const ch=ctCharge(taxable,g.months);
+  const required=Math.round(ch.tax*100)/100;
+  const journal=Math.round((required-provided)*100)/100;
+  return{lines,taxable,basis:ch.basis,required,provided,journal,instalments:ctInstalmentNote(taxable,g.months,g.fyStart)};
+}
+
+function ctRender(g,r){
+  const tb=document.getElementById('ctLines');tb.replaceChildren();
+  const add=(label,amount,cls)=>{const tr=document.createElement('tr');if(cls)tr.className=cls;const a=document.createElement('td');a.textContent=label;const b=document.createElement('td');b.textContent=ctMoney(amount);tr.append(a,b);tb.append(tr);};
+  r.lines.forEach(l=>add(l.label,l.amount));
+  add('Taxable profit (estimate)',r.taxable,'ct-tot');
+  add('Corporation tax for the year to date — '+r.basis,r.required,'ct-tot');
+  add('Already charged this year ('+CT_CONFIG.taxExpenseAccounts.join(', ')+')',r.provided);
+  add(r.journal>=0?'Journal to post: increase the provision':'Journal to post: release part of the provision',r.journal,'ct-big');
+  const sub=document.getElementById('ctAdditions');
+  sub.textContent=g.additions?'Additions this year: '+g.additions.map(a=>a.label+' '+ctMoney(a.amount)).join(' · ')+'. Cars do not get the annual investment allowance — reduce the figure for any cars.':'';
+  document.getElementById('ctInstal').textContent=r.instalments;
+  const warn=[];
+  if(g.drafts.length)warn.push('There '+(g.drafts.length===1?'is already a draft CT journal':'are already '+g.drafts.length+' draft CT journals')+' waiting in Xero ('+g.drafts.map(d=>fmtDateDisplay(d.date)).join(', ')+'). Post or delete '+(g.drafts.length===1?'it':'them')+' first: drafts are not in the P&L, so this figure would double up.');
+  warn.push(...g.notes);
+  document.getElementById('ctNotes').textContent=warn.join(' ');
+  document.getElementById('ctGrantBS').style.display=g.additions?'none':'';
+  const btn=document.getElementById('ctPostBtn');
+  btn.disabled=g.drafts.length>0||Math.abs(r.journal)<1;
+  btn.textContent=Math.abs(r.journal)<1?'Nothing to post — provision is up to date':'Create draft journal in Xero: '+ctMoney(Math.abs(r.journal));
+  document.getElementById('ctResult').style.display='block';
+}
+
+function ctInputs(){
+  return{caClaim:Number(document.getElementById('ctCA').value)||0,extraAdj:Number(document.getElementById('ctAdj').value)||0};
+}
+
+async function ctCalculate(){
+  hideError();hideInfo();
+  document.getElementById('ctResult').style.display='none';
+  const monthEnd=document.getElementById('ctMonthEnd').value;
+  if(!monthEnd){showError('Pick the month end.');return;}
+  const tenantId=localStorage.getItem('xero_tenant');
+  if(!tenantId){showError('Not connected to a Xero organisation. Please disconnect and sign in again.');return;}
+  const btn=document.getElementById('ctBtn');btn.disabled=true;document.getElementById('progressArea').style.display='block';
+  try{
+    const g=await ctGather(monthEnd,tenantId);
+    const ca=document.getElementById('ctCA');
+    if(g.additions&&ca.dataset.monthEnd!==monthEnd){ca.value=String(Math.round(g.additions.reduce((s,a)=>s+a.amount,0)));ca.dataset.monthEnd=monthEnd;}
+    const i=ctInputs();
+    const r=ctCompute(g,i.caClaim,i.extraAdj);
+    ctLast={g,r};
+    ctRender(g,r);
+    setProgress(100,'Done — journal '+ctMoney(r.journal));
+  }catch(err){console.error(err);document.getElementById('progressArea').style.display='none';setProgress(0,'');showError('<strong>Error:</strong> '+err.message);}
+  finally{btn.disabled=false;}
+}
+
+// Re-work the figures when the hand-entered boxes change, without refetching
+function ctRecompute(){if(!ctLast)return;const i=ctInputs();ctLast.r=ctCompute(ctLast.g,i.caClaim,i.extraAdj);ctRender(ctLast.g,ctLast.r);}
+
+function ctJournalPayload(g,r){
+  const amt=Math.round(r.journal*100)/100;
+  const desc=CT_CONFIG.narrationPrefix+' '+fmtDateDisplay(g.monthEnd)+': YTD charge '+ctMoney(r.required)+' less '+ctMoney(r.provided)+' already charged';
+  return{ManualJournals:[{
+    Narration:desc+'. Taxable profit '+ctMoney(r.taxable)+'; '+r.basis+'.',
+    Date:g.monthEnd,Status:'DRAFT',LineAmountTypes:'NoTax',ShowOnCashBasisReports:false,
+    JournalLines:[
+      {LineAmount:amt,AccountCode:CT_CONFIG.expenseAccount,Description:desc,TaxType:'NONE'},
+      {LineAmount:-amt,AccountCode:CT_CONFIG.liabilityAccount,Description:desc,TaxType:'NONE'}
+    ]
+  }]};
+}
+
+async function xeroPost(path,tenantId,body,authAttempt){
+  authAttempt=authAttempt||0;
+  const token=await getToken();
+  const res=await fetch(PROXY_BASE+'/api'+path,{method:'POST',headers:{'Authorization':'Bearer '+token,'Xero-Tenant-Id':tenantId,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.status===401&&authAttempt<1){localStorage.setItem('xero_exp','0');return xeroPost(path,tenantId,body,authAttempt+1);}
+  const text=await res.text();
+  if(!res.ok){const e=new Error('Xero said '+res.status+': '+text.substring(0,300));e.status=res.status;throw e;}
+  return JSON.parse(text);
+}
+
+async function ctPostDraft(){
+  if(!ctLast)return;
+  const{g,r}=ctLast;
+  hideError();
+  if(!window.confirm('Create a DRAFT manual journal in Xero dated '+fmtDateDisplay(g.monthEnd)+':\n\nDr '+CT_CONFIG.expenseAccount+' '+(g.codeToName[CT_CONFIG.expenseAccount]||'')+'  '+ctMoney(r.journal)+'\nCr '+CT_CONFIG.liabilityAccount+' '+(g.codeToName[CT_CONFIG.liabilityAccount]||'')+'  '+ctMoney(r.journal)+'\n\nIt stays a draft until someone posts it in Xero.'))return;
+  const btn=document.getElementById('ctPostBtn');btn.disabled=true;
+  try{
+    const res=await xeroPost('/ManualJournals',localStorage.getItem('xero_tenant'),ctJournalPayload(g,r));
+    const mj=(res.ManualJournals||[])[0]||{};
+    document.getElementById('ctPosted').textContent='Draft journal created in Xero ('+ctMoney(r.journal)+', '+fmtDateDisplay(g.monthEnd)+'). Review and post it under Accounting → Manual journals → Draft.';
+    document.getElementById('ctGrantWrite').style.display='none';
+    btn.textContent='Draft created';
+    g.drafts.push({date:g.monthEnd,narration:mj.Narration||''});
+  }catch(e){
+    console.error(e);btn.disabled=false;
+    if(e.status===401||e.status===403){
+      showError('Xero did not allow this app to create journals. Use <strong>Allow posting journals</strong> below to sign in once with that permission.');
+      document.getElementById('ctGrantWrite').style.display='';
+    }else if(e.status===404||e.status===405){
+      showError('The Xero proxy has not been updated to allow creating journals yet — deploy the new worker.js (see the README steps), then try again.');
+    }else showError('<strong>Error:</strong> '+e.message);
+  }
+}
+
 // ══════════════════════════════ STARTUP ══════════════════════════════
 window.addEventListener('load',async()=>{
   const params=new URLSearchParams(window.location.search);
-  if(params.has('error')&&localStorage.getItem('kpi_bs_requested')){
-    localStorage.removeItem('kpi_bs_requested');
-    setMode('kpi');
-    showError('Xero did not grant balance-sheet access ('+params.get('error')+'). It probably needs switching on for this app in the Xero developer portal. Your existing connection is unchanged; everything except cash cover still works.');
+  if(params.has('error')&&localStorage.getItem('xero_extra_pending')){
+    let p={};try{p=JSON.parse(localStorage.getItem('xero_extra_pending'))||{};}catch(_){}
+    localStorage.removeItem('xero_extra_pending');
+    setMode(p.mode||'xero');
+    showError('Xero did not grant the extra permission ('+params.get('error')+'). It probably needs switching on for this app in the Xero developer portal. Your existing connection is unchanged.');
     window.history.replaceState({},'',window.location.pathname);
     return;
   }
@@ -1378,7 +1642,18 @@ window.addEventListener('load',async()=>{
       showError('<strong>Sign-in error:</strong> '+err.message+'<br>Please click "Sign in with Xero" to try again.');
     }
     window.history.replaceState({},'',window.location.pathname);
-    if(localStorage.getItem('kpi_bs_requested')){localStorage.removeItem('kpi_bs_requested');setMode('kpi');}
+    const pend=localStorage.getItem('xero_extra_pending');
+    if(pend){
+      let p={};try{p=JSON.parse(pend)||{};}catch(_){}
+      localStorage.removeItem('xero_extra_pending');
+      if(localStorage.getItem('xero_tenant')){
+        localStorage.setItem('xero_extra_scopes',JSON.stringify(p.scopes||[]));
+        let conns=[];try{conns=JSON.parse(localStorage.getItem('xero_conns')||'[]');}catch(_){}
+        const keep=conns.find(c=>c.tenantId===p.tenant);
+        if(keep){localStorage.setItem('xero_tenant',keep.tenantId);localStorage.setItem('xero_org',keep.tenantName);}
+      }
+      setMode(p.mode||'xero');
+    }
     updateControls();return;
   }
   setMode('xero');
