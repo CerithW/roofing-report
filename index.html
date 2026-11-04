@@ -64,6 +64,22 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
 .xero-hero{text-align:center;padding:16px 0 10px}
 .xero-icon{font-size:50px;margin-bottom:16px}
 .xero-title{font-size:16px;font-weight:700;color:#E8EAF0;margin-bottom:10px}
+.kpi-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+.kpi-title{font-size:16px;font-weight:700;color:#E8EAF0}
+.kpi-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px}
+.kpi-tile{background:#1A1D23;border:1px solid #2E3340;border-radius:8px;padding:10px 12px}
+.kpi-tile b{display:block;font-size:22px;font-weight:700;color:#E8EAF0}
+.kpi-tile span{font-size:11px;color:#6B7280;display:inline-flex;align-items:center;gap:6px}
+.kpi-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-bottom:18px}
+.kpi-card{background:#1A1D23;border:1px solid #2E3340;border-left:4px solid #6B7280;border-radius:8px;padding:12px 14px}
+.kpi-top{display:flex;justify-content:space-between;gap:10px;font-size:12px;font-weight:600;color:#E8EAF0}
+.kpi-st{font-size:11px;font-weight:700;white-space:nowrap}
+.kpi-val{font-size:20px;font-weight:700;color:#E8EAF0;margin:6px 0 4px}
+.kpi-bands{font-size:10px;color:#6B7280}
+.kpi-cm{font-size:11px;color:#9CA3AF;margin-top:6px;line-height:1.5}
+.kpi-note{font-size:11px;color:#F59E0B;margin-bottom:10px}
+@media(max-width:560px){.kpi-tiles{grid-template-columns:repeat(2,1fr)}.date-row{grid-template-columns:1fr}}
 .xero-sub{font-size:13px;color:#6B7280;margin-bottom:26px;line-height:1.7}
 </style>
 </head>
@@ -123,6 +139,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
       <div class="field-group"><label>From</label><input type="date" id="dateFrom"></div>
       <div class="field-group"><label>To</label><input type="date" id="dateTo"></div>
     </div>
+    <div class="field-group" style="margin-bottom:22px"><label>Secured non-framework work, £ (optional, for the KPI scorecard)</label><input type="number" id="pipelineValue" min="0" step="1000" placeholder="e.g. 850000"></div>
     <button class="generate-btn" id="generateBtn" onclick="generateReport()">Generate Report</button>
   </div>
 
@@ -131,6 +148,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#1A1D23;color:#E8EAF0;mi
     <div class="progress-text" id="progressText">Initialising...</div>
   </div>
   <div class="result" id="resultArea">
+    <div id="kpiArea" style="display:none">
+      <div class="kpi-head"><div class="kpi-title">&#128678; KPI scorecard</div><div class="result-group-label" style="margin:0">Also the first sheet of the Directors report</div></div>
+      <div class="kpi-note" id="kpiNote"></div>
+      <div class="kpi-tiles" id="kpiTiles"></div>
+      <div id="kpiList"></div>
+      <div class="result-divider"></div>
+    </div>
     <div class="result-group-label">&#128193; Directors &#8212; Full Report</div>
     <a class="download-btn" id="downloadLink" href="#" download="JRandallRoofing_Report.xlsx">&#11015; Download Full Report</a>
     <div class="result-divider"></div>
@@ -155,6 +179,9 @@ const XERO_AUTH='https://login.xero.com/identity/connect/authorize';
 // old broad accounting.reports.read / accounting.journals.read return
 // invalid_scope; the Journals endpoint itself is now premium-tier only).
 const SCOPES='openid profile email offline_access accounting.reports.profitandloss.read accounting.invoices.read accounting.banktransactions.read accounting.manualjournals.read accounting.settings.read';
+// Balance-sheet read is requested for the KPI cash measure. If Xero rejects it
+// (invalid_scope), the page remembers that and signs in without it.
+const KPI_BS_SCOPE='accounting.reports.balancesheet.read';
 const PROJECT_CATEGORY='Project';
 const MANAGER_CATEGORY='Manager';
 
@@ -247,7 +274,7 @@ async function connectXero(){
   localStorage.setItem('xero_pkce',verifier);
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));
   const challenge=btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  const p=new URLSearchParams({response_type:'code',client_id:CLIENT_ID,redirect_uri:REDIRECT_URI,scope:SCOPES,state:state,code_challenge:challenge,code_challenge_method:'S256'});
+  const p=new URLSearchParams({response_type:'code',client_id:CLIENT_ID,redirect_uri:REDIRECT_URI,scope:localStorage.getItem('kpi_no_bs')?SCOPES:SCOPES+' '+KPI_BS_SCOPE,state:state,code_challenge:challenge,code_challenge_method:'S256'});
   window.location.href=XERO_AUTH+'?'+p.toString();
 }
 
@@ -393,6 +420,8 @@ function collectDocLines(jobMap,acctByCode,doc,lines,source,reference,debitNorma
     if(!acc||(acc.cls!=='REVENUE'&&acc.cls!=='EXPENSE'))continue;
     const tracking=line.Tracking||[];
     const proj=tracking.find(t=>t.Name===PROJECT_CATEGORY);
+    // KPI: how much direct cost carries a project tag
+    if(KPI_TAG&&acc.type==='DIRECTCOSTS'){const v=signedNet(doc,line,debitNormal);KPI_TAG.total+=v;if(proj&&proj.Option)KPI_TAG.tagged+=v;}
     if(!proj||!proj.Option)continue;
     const projName=String(proj.Option).trim();
     const mgrT=tracking.find(t=>t.Name===MANAGER_CATEGORY);
@@ -485,6 +514,7 @@ function parseApiPnLTotals(data){
 async function gatherFromXero(dateFrom,dateTo){
   const tenantId=localStorage.getItem('xero_tenant');
   if(!tenantId)throw new Error('Not connected to a Xero organisation. Please disconnect and sign in again.');
+  KPI_TAG={total:0,tagged:0};
   setProgress(4,'Checking tracking categories...');
   const catData=await xeroGet('/TrackingCategories',tenantId);
   const cats=catData.TrackingCategories||[];
@@ -495,7 +525,7 @@ async function gatherFromXero(dateFrom,dateTo){
   const acctData=await xeroGet('/Accounts',tenantId);
   const acctByCode={};
   for(const a of(acctData.Accounts||[])){
-    if(a.Code)acctByCode[a.Code]={name:String(a.Name||'').trim(),cls:a.Class};
+    if(a.Code)acctByCode[a.Code]={name:String(a.Name||'').trim(),cls:a.Class,type:a.Type};
   }
   await sleep(1100);
 
@@ -867,12 +897,357 @@ function buildJobSheet(wb,jobName,tabName,transactions,manager){
 }
 
 function newWorkbook(){const wb=new ExcelJS.Workbook();wb.creator='J Randall Roofing Report Generator';wb.created=wb.modified=new Date();return wb;}
-async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList){const wb=newWorkbook();buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList,kpiPack){const wb=newWorkbook();if(kpiPack)buildKpiSheet(wb,kpiPack.kpis,kpiPack.monthly,dateTo);buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
 async function buildManagerWorkbook(manager,jobs,managerPL,dateFrom,dateTo){const wb=newWorkbook();const jbm={};MANAGER_ORDER.forEach(m=>jbm[m]=m===manager?jobs:[]);buildSummarySheet(wb,jbm,managerPL,dateFrom,dateTo,manager);const sorted=[...jobs].sort((a,b)=>b.totals.net-a.totals.net);for(const job of sorted)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+
+// ══════════════════════════════ KPI SCORECARD ══════════════════════════════
+// Traffic-light measures for the monthly management meeting. Everything a
+// director might want to change (bands, break-even, which accounts count as
+// labour, the framework end date) lives in KPI_CONFIG — edit that, not the code.
+// Bands: dir 'high' = higher is better (>= green is Green, >= amber is Amber);
+//        dir 'low'  = lower is better  (<= green is Green, <= amber is Amber).
+const KPI_CONFIG={
+  breakEvenSales:400000,
+  lowJobMargin:0.15,
+  frameworkEnd:'2027-03-31',
+  // Account-name fragments, lower case, matched with "contains"
+  labourAccounts:['cis labour','on site labour','sub-contractors','sub contractors'],
+  materialsAccounts:['materials'],
+  payrollAccounts:['staff salaries','employers n.i'],
+  depreciationAccounts:['depreciation'],
+  sippAccounts:['directors sipp'],
+  valuationAccounts:['unconfirmed valuations'],
+  taxAccounts:['corporation tax'],
+  excludeCustomers:['unconfirmed valuations'],
+  bands:{
+    gp3:      {dir:'high',green:0.25,amber:0.20,unit:'pct'},
+    sales:    {dir:'high',green:500000,amber:400000,unit:'money'},
+    labour:   {dir:'low', green:0.38,amber:0.42,unit:'pct'},
+    materials:{dir:'low', green:0.28,amber:0.32,unit:'pct'},
+    overheads:{dir:'low', green:0.12,amber:0.15,unit:'pct'},
+    mgr:      {dir:'high',green:0.25,amber:0.20,unit:'pct'},
+    lowjobs:  {dir:'low', green:0.10,amber:0.20,unit:'pct'},
+    tagged:   {dir:'high',green:0.98,amber:0.95,unit:'pct'},
+    cashcover:{dir:'high',green:2,amber:1,unit:'months'},
+    debt60:   {dir:'low', green:0.05,amber:0.10,unit:'pct'},
+    cred60:   {dir:'low', green:0.03,amber:0.06,unit:'pct'},
+    close:    {dir:'high',green:4,amber:3,unit:'of4'},
+    conc:     {dir:'low', green:0.40,amber:0.60,unit:'pct'},
+    runway:   {dir:'high',green:12,amber:6,unit:'months'},
+    pipeline: {dir:'high',green:3,amber:1,unit:'months'},
+    ct:       {dir:'high',green:1,amber:1,unit:'yesno'}
+  }
+};
+const KPI_DEFS=[
+  ['gp3','Trading','Gross margin, rolling 3 months'],
+  ['sales','Trading','Sales in the month'],
+  ['labour','Trading','Labour cost % of sales (FYTD)'],
+  ['materials','Trading','Materials % of sales (FYTD)'],
+  ['overheads','Trading','Overheads % of sales (FYTD)'],
+  ['mgr','Jobs','Lowest manager margin'],
+  ['lowjobs','Jobs','Job value below '+Math.round(KPI_CONFIG.lowJobMargin*100)+'% margin'],
+  ['tagged','Jobs','Cost of sales tagged to a project'],
+  ['cashcover','Cash','Cash cover (months of costs)'],
+  ['debt60','Cash','Debtors over 60 days overdue'],
+  ['cred60','Cash','Creditors over 60 days overdue'],
+  ['close','Cash','Month-end close complete'],
+  ['conc','Risk','Largest customer share (FYTD)'],
+  ['runway','Risk','Framework runway'],
+  ['pipeline','Risk','Secured non-framework work'],
+  ['ct','Risk','Corporation tax provided']
+];
+const KPI_GROUPS=['Trading','Jobs','Cash','Risk'];
+const KPI_RAG={Green:{hex:'22C55E',light:'DCFCE7'},Amber:{hex:'F59E0B',light:'FEF3C7'},Red:{hex:'EF4444',light:'FEE2E2'},'Not measured':{hex:'6B7280',light:'EEEEEE'}};
+
+// Direct-cost tagging tally, filled by collectDocLines during a Xero run
+let KPI_TAG=null;
+
+function kpiPct(v){return(v*100).toFixed(1)+'%';}
+function kpiMoney(v){const a=Math.abs(v);const s=a>=1000?'£'+Math.round(a/1000).toLocaleString('en-GB')+'k':'£'+Math.round(a).toLocaleString('en-GB');return(v<0?'−':'')+s;}
+function kpiFmt(v,unit){
+  if(v===null||v===undefined||isNaN(v))return '—';
+  if(unit==='pct')return kpiPct(v);
+  if(unit==='money')return kpiMoney(v);
+  if(unit==='months')return v.toFixed(1)+' months';
+  if(unit==='of4')return v+' of 4';
+  if(unit==='yesno')return v>=1?'Yes':'No';
+  return String(v);
+}
+function kpiStatus(v,b){
+  if(v===null||v===undefined||isNaN(v))return 'Not measured';
+  if(b.dir==='high')return v>=b.green?'Green':v>=b.amber?'Amber':'Red';
+  return v<=b.green?'Green':v<=b.amber?'Amber':'Red';
+}
+function kpiBandText(b){
+  if(b.unit==='yesno')return 'Green if provided each month · Red if not';
+  const f=x=>b.unit==='months'?String(x):kpiFmt(x,b.unit);
+  if(b.dir==='high')return 'Green ≥'+f(b.green)+' · Amber '+f(b.amber)+'–'+f(b.green)+' · Red <'+f(b.amber);
+  return 'Green ≤'+f(b.green)+' · Amber '+f(b.green)+'–'+f(b.amber)+' · Red >'+f(b.amber);
+}
+
+function ymdAddMonths(ymd,n){const d=new Date(ymd+'T00:00:00Z');d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+n);return ymdUTC(d);}
+function ymdAddDays(ymd,n){const d=new Date(ymd+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return ymdUTC(d);}
+function ymdMonthStart(ymd){return ymd.substring(0,8)+'01';}
+function ymdLastOfMonth(ymd){return ymdAddDays(ymdAddMonths(ymdMonthStart(ymd),1),-1);}
+function monthLabel(ymd){return new Date(ymd+'T00:00:00Z').toLocaleDateString('en-GB',{month:'short',year:'2-digit',timeZone:'UTC'});}
+function sumAccts(accounts,fragments){let s=0;for(const k in accounts){if(fragments.some(f=>k.indexOf(f)!==-1))s+=accounts[k];}return s;}
+
+// Financial-year start on or before ymd, from Xero's year-end day/month
+function fyStartFor(ymd,endDay,endMonth){
+  const y=Number(ymd.substring(0,4));
+  for(const yr of[y,y-1]){
+    const end=ymdUTC(new Date(Date.UTC(yr,endMonth-1,endDay)));
+    const start=ymdAddDays(end,1);
+    if(start<=ymd)return start;
+  }
+  return ymdAddDays(ymdUTC(new Date(Date.UTC(y-2,endMonth-1,endDay))),1);
+}
+
+// Multi-period P&L (one column per month, latest first) → per-month buckets
+function parseMonthlyPnl(data,n){
+  const months=[];for(let i=0;i<n;i++)months.push({sales:0,cos:0,opex:0,other:0,accounts:{}});
+  const report=(data.Reports||[])[0];if(!report)return months;
+  for(const section of(report.Rows||[])){
+    if(section.RowType!=='Section')continue;
+    const title=String(section.Title||'').toLowerCase();if(!title)continue;
+    const kind=(title.indexOf('cost of sales')!==-1||title.indexOf('direct cost')!==-1)?'cos'
+      :title.indexOf('other income')!==-1?'other'
+      :isPnlIncomeTitle(title)?'sales':'opex';
+    for(const row of(section.Rows||[])){
+      if(row.RowType!=='Row')continue;
+      const cells=row.Cells||[];
+      const name=String((cells[0]||{}).Value||'').trim().toLowerCase();
+      for(let i=0;i<n;i++){
+        const v=pnlAmt(cells[i+1]);
+        months[i][kind]+=v;
+        months[i].accounts[name]=(months[i].accounts[name]||0)+v;
+      }
+    }
+  }
+  return months;
+}
+
+function balanceSheetBank(data){
+  const report=(data.Reports||[])[0];if(!report)return null;
+  for(const section of(report.Rows||[])){
+    if(section.RowType!=='Section')continue;
+    if(String(section.Title||'').trim().toLowerCase()!=='bank')continue;
+    const sum=(section.Rows||[]).find(r=>r.RowType==='SummaryRow');
+    if(sum)return pnlAmt((sum.Cells||[])[1]);
+    return(section.Rows||[]).filter(r=>r.RowType==='Row').reduce((s,r)=>s+pnlAmt((r.Cells||[])[1]),0);
+  }
+  return null;
+}
+
+function invBase(inv,field){const v=Number(inv[field])||0;const rate=Number(inv.CurrencyRate);return rate>0?v/rate:v;}
+function invDueYmd(inv){if(inv.DueDateString)return String(inv.DueDateString).substring(0,10);const d=parseXeroDate(inv.DueDate);return d?ymdUTC(d):'';}
+
+// Measures from the job report itself — available in both Xero and file mode
+function jobKpis(managerPL,jobList){
+  const out={};
+  const mgrs=MANAGER_ORDER.filter(m=>m!=='Unassigned'&&managerPL[m]&&managerPL[m].income>0)
+    .map(m=>({m,margin:managerPL[m].net/managerPL[m].income}))
+    .sort((a,b)=>a.margin-b.margin);
+  if(mgrs.length){
+    out.mgr={value:mgrs[0].margin,comment:mgrs.map(x=>x.m+' '+kpiPct(x.margin)).join(' · ')+'. Manager P&L for the report period, so late supplier invoices move it.'};
+  }
+  let inc=0,low=0,n=0;
+  for(const j of jobList){
+    if(j.totals.income<=0)continue;
+    inc+=j.totals.income;
+    if(j.totals.net/j.totals.income<KPI_CONFIG.lowJobMargin){low+=j.totals.income;n++;}
+  }
+  if(inc>0)out.lowjobs={value:low/inc,comment:n+' job'+(n!==1?'s':'')+' worth '+kpiMoney(low)+' of '+kpiMoney(inc)+' invoiced in the period. Check for missing supplier invoices before acting.'};
+  return out;
+}
+
+async function gatherKpisFromXero(dateTo,tenantId,pipelineValue){
+  const out={},notes=[],monthly=[];
+  const today=ymdUTC(new Date());
+
+  setProgress(57,'KPIs: financial year...');
+  let fyStart=null;
+  try{
+    const org=((await xeroGet('/Organisation',tenantId)).Organisations||[])[0]||{};
+    fyStart=fyStartFor(dateTo,Number(org.FinancialYearEndDay)||31,Number(org.FinancialYearEndMonth)||3);
+  }catch(e){fyStart=fyStartFor(dateTo,31,3);notes.push('financial year (assumed 31 March year end)');}
+  await sleep(1100);
+
+  setProgress(59,'KPIs: monthly P&L...');
+  const N=12;let months=null;
+  try{
+    const d=await xeroGet('/Reports/ProfitAndLoss?fromDate='+ymdMonthStart(dateTo)+'&toDate='+dateTo+'&periods='+(N-1)+'&timeframe=MONTH&standardLayout=true',tenantId);
+    months=parseMonthlyPnl(d,N);
+    months.forEach((m,i)=>{m.start=ymdAddMonths(ymdMonthStart(dateTo),-i);m.gp=m.sales-m.cos;m.net=m.sales+m.other-m.cos-m.opex;});
+  }catch(e){notes.push('monthly P&L');console.warn(e);}
+  await sleep(1100);
+
+  if(months){
+    const latest=months[0];
+    const partial=dateTo!==ymdLastOfMonth(dateTo);
+    const r3=months.slice(0,3);const r3s=r3.reduce((s,m)=>s+m.sales,0),r3g=r3.reduce((s,m)=>s+m.gp,0);
+    if(r3s>0)out.gp3={value:r3g/r3s,comment:monthLabel(r3[2].start)+'–'+monthLabel(r3[0].start)+': sales '+kpiMoney(r3s)+', gross profit '+kpiMoney(r3g)+'. Single months: '+r3.slice().reverse().map(m=>monthLabel(m.start)+' '+(m.sales?kpiPct(m.gp/m.sales):'—')).join(', ')+'.'};
+    out.sales={value:latest.sales,comment:monthLabel(latest.start)+(partial?' to '+fmtDateDisplay(dateTo)+' (part month)':'')+'. Break-even line '+kpiMoney(KPI_CONFIG.breakEvenSales)+'.'};
+    const fy=months.filter(m=>m.start>=fyStart);
+    const fys=fy.reduce((s,m)=>s+m.sales,0);
+    if(fys>0){
+      const lab=fy.reduce((s,m)=>s+sumAccts(m.accounts,KPI_CONFIG.labourAccounts),0);
+      const mat=fy.reduce((s,m)=>s+sumAccts(m.accounts,KPI_CONFIG.materialsAccounts),0);
+      const opx=fy.reduce((s,m)=>s+m.opex,0);
+      out.labour={value:lab/fys,comment:kpiMoney(lab)+' of '+kpiMoney(fys)+' sales since '+fmtDateDisplay(fyStart)+'.'};
+      out.materials={value:mat/fys,comment:kpiMoney(mat)+' of '+kpiMoney(fys)+' sales.'};
+      out.overheads={value:opx/fys,comment:kpiMoney(opx)+' as posted — check depreciation, SIPP and payroll are in before relying on it.'};
+      out._avgCost=fy.reduce((s,m)=>s+m.cos+m.opex,0)/fy.length;
+      const tax=fy.reduce((s,m)=>s+sumAccts(m.accounts,KPI_CONFIG.taxAccounts),0);
+      const np=fy.reduce((s,m)=>s+m.net,0);
+      out.ct={value:Math.abs(tax)>0?1:0,comment:Math.abs(tax)>0?kpiMoney(tax)+' charged this year to date.':'No corporation tax charge posted. Profit to date as posted '+kpiMoney(np)+'; at 25% that is about '+kpiMoney(Math.max(0,np)*0.25)+' to provide.'};
+    }
+    const a=latest.accounts;
+    const checks=[
+      ['payroll',sumAccts(a,KPI_CONFIG.payrollAccounts)>0],
+      ['valuations accrued',Math.abs(sumAccts(a,KPI_CONFIG.valuationAccounts))>0],
+      ['depreciation',sumAccts(a,KPI_CONFIG.depreciationAccounts)>0],
+      ['SIPP',sumAccts(a,KPI_CONFIG.sippAccounts)>0]
+    ];
+    const done=checks.filter(c=>c[1]).length;
+    const missing=checks.filter(c=>!c[1]).map(c=>c[0]);
+    out.close={value:done,comment:monthLabel(latest.start)+': '+(missing.length?'missing '+missing.join(', ')+'.':'payroll, valuations, depreciation and SIPP all posted.')};
+    months.slice().reverse().forEach(m=>{if(m.sales||m.cos||m.opex)monthly.push({label:monthLabel(m.start),sales:m.sales,gp:m.gp,gpPct:m.sales?m.gp/m.sales:null,net:m.net});});
+  }
+
+  setProgress(61,'KPIs: cash...');
+  try{
+    const bs=await xeroGet('/Reports/BalanceSheet?date='+dateTo+'&standardLayout=true',tenantId);
+    const cash=balanceSheetBank(bs);
+    if(cash!==null&&out._avgCost>0)out.cashcover={value:cash/out._avgCost,comment:'Bank '+kpiMoney(cash)+' at '+fmtDateDisplay(dateTo)+' ÷ average monthly costs '+kpiMoney(out._avgCost)+' this year.'};
+  }catch(e){notes.push('balance sheet (disconnect and sign in again to grant balance-sheet access)');console.warn(e);}
+  await sleep(1100);
+
+  setProgress(63,'KPIs: debtors and creditors...');
+  try{
+    const open=await fetchPaged('Invoices','Invoices','Status == "AUTHORISED"',tenantId,63,'Outstanding invoices and bills');
+    const cutoff=ymdAddDays(today,-60);
+    const ar={tot:0,old:0,by:{}},ap={tot:0,old:0};
+    for(const inv of open){
+      const due=invBase(inv,'AmountDue');if(!due)continue;
+      const isOld=invDueYmd(inv)<cutoff;
+      if(inv.Type==='ACCREC'){ar.tot+=due;if(isOld){ar.old+=due;const c=(inv.Contact&&inv.Contact.Name)||'?';ar.by[c]=(ar.by[c]||0)+due;}}
+      else if(inv.Type==='ACCPAY'){ap.tot+=due;if(isOld)ap.old+=due;}
+    }
+    const top=Object.entries(ar.by).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([c,v])=>c+' '+kpiMoney(v));
+    if(ar.tot>0)out.debt60={value:ar.old/ar.tot,comment:kpiMoney(ar.old)+' of '+kpiMoney(ar.tot)+' owed at '+fmtDateDisplay(today)+'.'+(top.length?' Largest: '+top.join(', ')+'.':'')};
+    if(ap.tot>0)out.cred60={value:ap.old/ap.tot,comment:kpiMoney(ap.old)+' of '+kpiMoney(ap.tot)+' owed to suppliers at '+fmtDateDisplay(today)+'.'};
+  }catch(e){notes.push('outstanding invoices');console.warn(e);}
+  await sleep(1100);
+
+  setProgress(66,'KPIs: sales by customer...');
+  try{
+    const sales=await fetchPaged('Invoices','Invoices',xeroDateFilter(fyStart,dateTo,'Type == "ACCREC" && (Status == "AUTHORISED" || Status == "PAID")'),tenantId,66,'Sales invoices this year');
+    const by={};let tot=0;
+    for(const inv of sales){
+      const c=String((inv.Contact&&inv.Contact.Name)||'?').trim();
+      if(KPI_CONFIG.excludeCustomers.some(x=>c.toLowerCase().indexOf(x)!==-1))continue;
+      const v=invBase(inv,'SubTotal');by[c]=(by[c]||0)+v;tot+=v;
+    }
+    const ranked=Object.entries(by).sort((x,y)=>y[1]-x[1]);
+    if(tot>0&&ranked.length)out.conc={value:ranked[0][1]/tot,comment:ranked[0][0]+' '+kpiMoney(ranked[0][1])+' of '+kpiMoney(tot)+'. Next: '+ranked.slice(1,4).map(([c,v])=>c+' '+kpiMoney(v)).join(', ')+'.'};
+  }catch(e){notes.push('sales by customer');console.warn(e);}
+
+  const end=KPI_CONFIG.frameworkEnd;
+  const runway=(Number(end.substring(0,4))-Number(dateTo.substring(0,4)))*12+(Number(end.substring(5,7))-Number(dateTo.substring(5,7)));
+  out.runway={value:Math.max(0,runway),comment:'Framework extension ends '+fmtDateDisplay(end)+'.'};
+
+  if(KPI_TAG&&KPI_TAG.total>0)out.tagged={value:KPI_TAG.tagged/KPI_TAG.total,comment:kpiMoney(KPI_TAG.total-KPI_TAG.tagged)+' of '+kpiMoney(KPI_TAG.total)+' direct costs in the period have no project. Payroll pay-run journals are not included.'};
+  if(pipelineValue>0)out.pipeline={value:pipelineValue/KPI_CONFIG.breakEvenSales,comment:kpiMoney(pipelineValue)+' entered ÷ break-even '+kpiMoney(KPI_CONFIG.breakEvenSales)+' a month.'};
+
+  delete out._avgCost;
+  return{values:out,notes:notes,monthly:monthly};
+}
+
+function assembleKpis(values,mode){
+  return KPI_DEFS.map(([id,group,name])=>{
+    const b=KPI_CONFIG.bands[id];const v=values[id];
+    const value=v?v.value:null;
+    let comment=v?v.comment:'';
+    if(!v){
+      if(id==='pipeline')comment='Enter the secured order book (excluding the framework) above Generate to score this.';
+      else if(mode!=='xero')comment='Needs the Xero connection.';
+      else comment='Not enough data in Xero for this period.';
+    }
+    return{id,group,name,value,display:kpiFmt(value,b.unit),status:kpiStatus(value,b),bands:kpiBandText(b),comment};
+  });
+}
+
+function renderKpis(kpis,notes){
+  const area=document.getElementById('kpiArea');
+  const counts={Red:0,Amber:0,Green:0,'Not measured':0};kpis.forEach(k=>counts[k.status]++);
+  const tiles=document.getElementById('kpiTiles');tiles.replaceChildren();
+  ['Red','Amber','Green','Not measured'].forEach(s=>{
+    const t=document.createElement('div');t.className='kpi-tile';
+    const n=document.createElement('b');n.textContent=String(counts[s]);
+    const l=document.createElement('span');const d=document.createElement('i');d.className='kpi-dot';d.style.background='#'+KPI_RAG[s].hex;
+    l.append(d,document.createTextNode(s));t.append(n,l);tiles.append(t);
+  });
+  const list=document.getElementById('kpiList');list.replaceChildren();
+  for(const g of KPI_GROUPS){
+    const h=document.createElement('div');h.className='result-group-label';h.textContent=g;list.append(h);
+    const grid=document.createElement('div');grid.className='kpi-grid';
+    for(const k of kpis.filter(x=>x.group===g)){
+      const c=document.createElement('div');c.className='kpi-card';c.style.borderLeftColor='#'+KPI_RAG[k.status].hex;
+      const top=document.createElement('div');top.className='kpi-top';
+      const nm=document.createElement('span');nm.textContent=k.name;
+      const st=document.createElement('span');st.className='kpi-st';st.style.color='#'+KPI_RAG[k.status].hex;st.textContent=k.status;
+      top.append(nm,st);
+      const val=document.createElement('div');val.className='kpi-val';val.textContent=k.display;
+      const bands=document.createElement('div');bands.className='kpi-bands';bands.textContent=k.bands;
+      const cm=document.createElement('div');cm.className='kpi-cm';cm.textContent=k.comment;
+      c.append(top,val,bands,cm);grid.append(c);
+    }
+    list.append(grid);
+  }
+  const note=document.getElementById('kpiNote');
+  note.textContent=notes&&notes.length?'Could not read from Xero: '+notes.join('; ')+'. Those measures show as not measured.':'';
+  area.style.display='block';
+}
+
+function buildKpiSheet(wb,kpis,monthly,dateTo){
+  const ws=wb.addWorksheet('\u{1F6A6} KPI Scorecard',{views:[{showGridLines:false}]});
+  [18,38,16,14,46,70].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  let r=1;
+  ws.getRow(r).height=32;ws.mergeCells(r,1,r,6);
+  setCell(ws,r,1,'J Randall Roofing Contractors Ltd — KPI Scorecard',{fill:fill('1A1D23'),font:afont({size:15,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  ws.mergeCells(r,1,r,6);
+  setCell(ws,r,1,'Month to '+fmtDateDisplay(dateTo)+' · live from Xero, unadjusted · generated '+fmtDateDisplay(ymdUTC(new Date())),{fill:fill('2E3340'),font:afont({size:9,color:'FFB0B8C8'}),alignment:{vertical:'middle',horizontal:'center'}});r+=2;
+  ['Area','Measure','Value','Status','Bands','Comment'].forEach((h,ci)=>setCell(ws,r,ci+1,h,{fill:fill('0A3D5C'),font:afont({bold:true,size:9,color:'FFFFFFFF'}),alignment:{vertical:'middle'},border:true}));r++;
+  for(const k of kpis){
+    const rag=KPI_RAG[k.status];
+    ws.getRow(r).height=30;
+    setCell(ws,r,1,k.group,{font:afont({size:9,color:'FF6B7280'}),alignment:{vertical:'middle'},border:true});
+    setCell(ws,r,2,k.name,{font:afont({size:10,bold:true}),alignment:{vertical:'middle',wrapText:true},border:true});
+    setCell(ws,r,3,k.display,{font:afont({size:10,bold:true}),alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,4,k.status,{fill:fill(rag.light),font:afont({size:9,bold:true,color:'FF'+rag.hex}),alignment:{vertical:'middle',horizontal:'center'},border:true});
+    setCell(ws,r,5,k.bands,{font:afont({size:8,color:'FF6B7280'}),alignment:{vertical:'middle',wrapText:true},border:true});
+    setCell(ws,r,6,k.comment,{font:afont({size:9}),alignment:{vertical:'middle',wrapText:true},border:true});
+    r++;
+  }
+  if(monthly&&monthly.length){
+    r++;
+    ws.mergeCells(r,1,r,6);setCell(ws,r,1,'Month by month (as posted in Xero)',{fill:fill('1A1D23'),font:afont({bold:true,size:10,color:'FFFFFFFF'}),alignment:{vertical:'middle',indent:1}});r++;
+    ['Month','Sales','Gross profit','GP %','Net profit'].forEach((h,ci)=>setCell(ws,r,ci+1,h,{fill:fill('E4E8EF'),font:afont({bold:true,size:9}),alignment:{horizontal:ci?'right':'left'},border:true}));r++;
+    for(const m of monthly){
+      setCell(ws,r,1,m.label,{font:afont({size:9}),border:true});
+      setCell(ws,r,2,m.sales,{font:afont({size:9}),numFmt:CURR_GBP,border:true});
+      setCell(ws,r,3,m.gp,{font:afont({size:9}),numFmt:CURR_GBP,border:true});
+      setCell(ws,r,4,m.gpPct===null?'':{formula:'IF(B'+r+'=0,"",C'+r+'/B'+r+'*100)',result:m.gpPct*100},{font:afont({size:9}),numFmt:PCT_FMT,border:true});
+      setCell(ws,r,5,m.net,{font:afont({size:9}),numFmt:CURR_GBP,border:true});
+      r++;
+    }
+  }
+}
 
 // ══════════════════════════════ GENERATE ══════════════════════════════
 async function generateReport(){
-  hideError();hideInfo();document.getElementById('resultArea').style.display='none';
+  hideError();hideInfo();document.getElementById('resultArea').style.display='none';document.getElementById('kpiArea').style.display='none';
   const dateFrom=document.getElementById('dateFrom').value;const dateTo=document.getElementById('dateTo').value;
   if(currentMode==='xero'&&(!dateFrom||!dateTo)){showError('Please select both a From and To date — the Xero report needs a defined period.');return;}
   if(dateFrom&&dateTo&&dateFrom>dateTo){showError('The From date is after the To date.');return;}
@@ -885,13 +1260,29 @@ async function generateReport(){
   try{
     const data=currentMode==='xero'?await gatherFromXero(dateFrom,dateTo):await gatherFromFiles();
     const{jobsByManager,jobList,managerPL}=data;
-    setProgress(60,'Building full directors report...');const fullUrl=await buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList);
+    // KPI scorecard: never allowed to stop the job report from generating
+    let kpiPack=null;
+    try{
+      const pipelineValue=Number(document.getElementById('pipelineValue').value)||0;
+      let values=jobKpis(managerPL,jobList),notes=[],monthly=[];
+      if(currentMode==='xero'){
+        const x=await gatherKpisFromXero(dateTo,localStorage.getItem('xero_tenant'),pipelineValue);
+        values=Object.assign({},x.values,values);notes=x.notes;monthly=x.monthly;
+      }else if(pipelineValue>0){
+        values.pipeline={value:pipelineValue/KPI_CONFIG.breakEvenSales,comment:kpiMoney(pipelineValue)+' entered ÷ break-even '+kpiMoney(KPI_CONFIG.breakEvenSales)+' a month.'};
+      }
+      const kpis=assembleKpis(values,currentMode);
+      kpiPack={kpis:kpis,monthly:monthly};
+      renderKpis(kpis,notes);
+    }catch(e){console.error(e);showInfo('The KPI scorecard could not be built ('+String(e.message||e).substring(0,200)+'). The job reports are unaffected.');}
+    finally{KPI_TAG=null;}
+    setProgress(70,'Building full directors report...');const fullUrl=await buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList,kpiPack);
     const dl=document.getElementById('downloadLink');dl.href=fullUrl;dl.download=makeFilename(dateParts,'Full_Report');
     const managerDl=document.getElementById('managerDownloads');managerDl.innerHTML='';
     const managersWithJobs=MANAGER_ORDER.filter(m=>(jobsByManager[m]||[]).length>0);const total=managersWithJobs.length;
     for(let i=0;i<total;i++){
       const mgr=managersWithJobs[i];const jobs=jobsByManager[mgr];
-      setProgress(65+Math.round((i/total)*32),'Building '+mgr+'\'s report ('+(i+1)+'/'+total+')...');
+      setProgress(75+Math.round((i/total)*22),'Building '+mgr+'\'s report ('+(i+1)+'/'+total+')...');
       const url=await buildManagerWorkbook(mgr,jobs,managerPL,dateFrom,dateTo);
       const mc=MC[mgr]||MC.Unassigned;const a=document.createElement('a');
       a.className='mgr-btn';a.style.background=mc.btn;a.href=url;a.download=makeFilename(dateParts,mgr+'_Report');a.textContent='⬇ '+mgr;
@@ -906,6 +1297,13 @@ async function generateReport(){
 // ══════════════════════════════ STARTUP ══════════════════════════════
 window.addEventListener('load',async()=>{
   const params=new URLSearchParams(window.location.search);
+  if(params.get('error')==='invalid_scope'&&!localStorage.getItem('kpi_no_bs')){
+    localStorage.setItem('kpi_no_bs','1');
+    setMode('xero');
+    showError('Xero would not grant balance-sheet access to this app, so it has been dropped. <strong>Click "Sign in with Xero" again</strong> — everything works except the KPI cash-cover measure. To add it back, enable the balance sheet scope on the Xero app and clear this browser\'s site data.');
+    window.history.replaceState({},'',window.location.pathname);
+    return;
+  }
   if(params.has('error')){
     setMode('xero');
     showError('<strong>Xero sign-in was not completed:</strong> '+params.get('error'));
