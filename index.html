@@ -170,6 +170,41 @@ const MC={
 };
 const INCOME_KEYWORDS=['flat felt roofing','unconfirmed valuations'];
 
+// ── KPI scorecard thresholds ────────────────────────────────────────────────
+// Every traffic light in the report is driven from here. `dir:'up'` means a
+// higher number is better; `dir:'down'` means lower is better. Green is hit at
+// or beyond `green`, amber at or beyond `amber`, otherwise red.
+const KPI_TARGETS={
+  margin:      {green:20, amber:10, dir:'up',   label:'Net margin %',          fmt:'pct'},
+  lossJobsPct: {green:10, amber:25, dir:'down', label:'Loss-making jobs %',    fmt:'pct'},
+  allocPct:    {green:95, amber:85, dir:'up',   label:'Costs allocated to a job %', fmt:'pct'},
+  concPct:     {green:40, amber:60, dir:'down', label:'Largest job as % of income', fmt:'pct'}
+};
+const RAG={
+  green:{fill:'D4EDDA',font:'FF155724',word:'Green'},
+  amber:{fill:'FFF3CD',font:'FF856404',word:'Amber'},
+  red:  {fill:'F8D7DA',font:'FF721C24',word:'Red'},
+  none: {fill:'EDEFF3',font:'FF555F6E',word:'—'}
+};
+function ragFor(key,value){
+  if(value===null||value===undefined||value==='')return RAG.none;
+  const t=KPI_TARGETS[key];if(!t)return RAG.none;
+  if(t.dir==='up')  return value>=t.green?RAG.green:(value>=t.amber?RAG.amber:RAG.red);
+  return value<=t.green?RAG.green:(value<=t.amber?RAG.amber:RAG.red);
+}
+
+// ── Review flag thresholds ──────────────────────────────────────────────────
+// Single-period tests only: the app ingests one month at a time, so these look
+// for internal inconsistency rather than month-on-month movement.
+const FLAG_RULES={
+  minJobValue:        1000,  // ignore jobs smaller than this in £ terms
+  marginOutlierPts:   30,    // job margin this far above company average
+  marginOutlierMinInc:10000, // ...and at least this much income, before flagging
+  lossMarginPct:      -10,   // job margin at or below this is flagged
+  unallocCostPct:     10,    // manager costs not tied to a job, as % of their costs
+  concentrationPct:   40     // one job this far above total company income
+};
+
 let currentMode='xero';
 
 // ══════════════════════════════ UI HELPERS ══════════════════════════════
@@ -412,7 +447,7 @@ function collectDocLines(jobMap,acctByCode,doc,lines,source,reference,debitNorma
 
 function assembleJobs(jobMap){
   const jobsByManager={};MANAGER_ORDER.forEach(m=>jobsByManager[m]=[]);
-  const usedTabs=new Set(['\u{1F4CA} profit summary']);const jobList=[];
+  const usedTabs=new Set(['\u{1F4CA} profit summary','\u{1F6A6} kpi scorecard','\u{1F6A9} review flags']);const jobList=[];
   const names=Object.keys(jobMap).sort((a,b)=>a.localeCompare(b));
   for(const name of names){
     const txns=jobMap[name];
@@ -644,7 +679,7 @@ async function gatherFromFiles(){
   setProgress(44,'Parsing Manager P&L...');const managerPL=parseManagerPL(plAB);
   setProgress(52,'Assigning jobs to managers...');
   const jobsByManager={};MANAGER_ORDER.forEach(m=>jobsByManager[m]=[]);
-  const usedTabs=new Set(['\u{1F4CA} profit summary']);const jobList=[];
+  const usedTabs=new Set(['\u{1F4CA} profit summary','\u{1F6A6} kpi scorecard','\u{1F6A9} review flags']);const jobList=[];
   for(const[jobName,txns]of Object.entries(rawJobs)){
     if(txns.length===0)continue;
     const mgr=getDominantManager(txns);const totals=calcTotals(txns);
@@ -815,6 +850,192 @@ function buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,singleMana
   }
 }
 
+// Per-manager figures shared by the scorecard and the review tab, so the two
+// tabs can never disagree with each other or with the Profit Summary.
+function managerStats(jobsByManager,managerPL,mgr){
+  const jobs=jobsByManager[mgr]||[];
+  const pl=managerPL[mgr]||{income:0,costs:0,net:0};
+  const jobsInc=jobs.reduce((s,j)=>s+j.totals.income,0);
+  const jobsCost=jobs.reduce((s,j)=>s+(j.totals.income-j.totals.net),0);
+  const lossJobs=jobs.filter(j=>j.totals.net<0);
+  const topInc=jobs.reduce((m,j)=>Math.max(m,j.totals.income),0);
+  return{
+    mgr,jobs,pl,jobsInc,jobsCost,
+    jobCount:jobs.length,
+    lossCount:lossJobs.length,
+    margin:      pl.income?pl.net/pl.income*100:null,
+    lossJobsPct: jobs.length?lossJobs.length/jobs.length*100:null,
+    allocPct:    pl.costs?jobsCost/pl.costs*100:null,
+    concPct:     pl.income?topInc/pl.income*100:null,
+    unallocCost: pl.costs-jobsCost
+  };
+}
+
+function buildScorecardSheet(wb,jobsByManager,managerPL,dateFrom,dateTo,singleManager){
+  const ws=wb.addWorksheet('\u{1F6A6} KPI Scorecard',{views:[{state:'frozen',ySplit:4,showGridLines:false}]});
+  [24,16,16,12,9,15,17,15].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  const LAST=8;let r=1;
+
+  ws.getRow(r).height=34;ws.mergeCells(r,1,r,LAST);
+  setCell(ws,r,1,'J Randall Roofing Contractors Ltd — KPI Scorecard',{fill:fill('1A1D23'),font:afont({size:15,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  ws.getRow(r).height=20;ws.mergeCells(r,1,r,LAST);
+  const period=(dateFrom&&dateTo)?'Period: '+fmtDateDisplay(dateFrom)+' to '+fmtDateDisplay(dateTo):'Period: All transactions';
+  setCell(ws,r,1,period+'   |   Traffic lights are set against the targets listed below',{fill:fill('1A1D23'),font:afont({size:9,italic:true,color:'FF8A9AAB'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  ws.getRow(r).height=4;for(let c=1;c<=LAST;c++)setCell(ws,r,c,'',{fill:fill('1A1D23')});r++;
+
+  ws.getRow(r).height=30;
+  ['Manager','Income (\xa3)','Net Profit (\xa3)','Margin %','Jobs','Loss-making %','Costs allocated %','Largest job %'].forEach((h,ci)=>{
+    setCell(ws,r,ci+1,h,{fill:fill('2C3244'),font:afont({bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:ci===0?'left':'right',wrapText:true},border:true});
+  });r++;
+
+  const managers=(singleManager?[singleManager]:MANAGER_ORDER)
+    .filter(m=>{const s=managerStats(jobsByManager,managerPL,m);return s.jobCount>0||s.pl.income!==0||s.pl.costs!==0;});
+
+  const ragCols={4:'margin',6:'lossJobsPct',7:'allocPct',8:'concPct'};
+  function writeRow(s,label,isTotal){
+    ws.getRow(r).height=isTotal?24:19;
+    const base=isTotal?'111418':((MC[s.mgr]||MC.Unassigned).light);
+    const f=isTotal?afont({bold:true,size:11,color:'FFFFC8A0'}):afont({bold:true,color:'FF'+((MC[s.mgr]||MC.Unassigned).dark)});
+    setCell(ws,r,1,label,{fill:fill(base),font:f,alignment:{vertical:'middle',horizontal:'left',indent:1},border:true});
+    setCell(ws,r,2,s.pl.income,{fill:fill(base),font:isTotal?f:afont(),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,3,s.pl.net,{fill:fill(base),font:isTotal?f:afont({color:s.pl.net>=0?'FF1A6B3A':'FFCC2020'}),numFmt:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,5,s.jobCount,{fill:fill(base),font:isTotal?f:afont(),alignment:{vertical:'middle',horizontal:'right'},border:true});
+    for(const[col,key]of Object.entries(ragCols)){
+      const v=s[key];const rag=ragFor(key,v);
+      setCell(ws,r,Number(col),v===null?'—':v,{fill:fill(rag.fill),font:afont({bold:true,color:rag.font}),numFmt:v===null?undefined:PCT_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    }
+    r++;
+  }
+
+  const stats=managers.map(m=>managerStats(jobsByManager,managerPL,m));
+  stats.forEach(s=>writeRow(s,s.mgr,false));
+
+  if(!singleManager&&stats.length>0){
+    const allJobs=stats.flatMap(s=>s.jobs);
+    const inc=stats.reduce((t,s)=>t+s.pl.income,0);
+    const cost=stats.reduce((t,s)=>t+s.pl.costs,0);
+    const jobsCost=stats.reduce((t,s)=>t+s.jobsCost,0);
+    const topInc=allJobs.reduce((m,j)=>Math.max(m,j.totals.income),0);
+    const loss=allJobs.filter(j=>j.totals.net<0).length;
+    writeRow({
+      mgr:'Unassigned',pl:{income:inc,costs:cost,net:inc-cost},jobs:allJobs,jobsCost,
+      jobCount:allJobs.length,lossCount:loss,
+      margin:inc?(inc-cost)/inc*100:null,
+      lossJobsPct:allJobs.length?loss/allJobs.length*100:null,
+      allocPct:cost?jobsCost/cost*100:null,
+      concPct:inc?topInc/inc*100:null
+    },'COMPANY',true);
+  }
+
+  r++;
+  ws.getRow(r).height=22;ws.mergeCells(r,1,r,LAST);
+  setCell(ws,r,1,'TARGETS — edit these in index.html (KPI_TARGETS) to change every traffic light',{fill:fill('2C3244'),font:afont({bold:true,size:9,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'left',indent:1}});r++;
+  ws.getRow(r).height=19;
+  ['Measure','Green','Amber','Red','','','',''].forEach((h,ci)=>setCell(ws,r,ci+1,h,{fill:fill('EEF1F5'),font:afont({bold:true,size:9,color:'FF2C3244'}),alignment:{vertical:'middle',horizontal:ci===0?'left':'right',indent:ci===0?1:0},border:ci<4}));r++;
+  for(const[key,t]of Object.entries(KPI_TARGETS)){
+    const up=t.dir==='up';
+    ws.getRow(r).height=18;
+    setCell(ws,r,1,t.label,{font:afont({size:9}),alignment:{vertical:'middle',horizontal:'left',indent:1},border:true});
+    setCell(ws,r,2,(up?'≥ ':'≤ ')+t.green+'%',{fill:fill(RAG.green.fill),font:afont({size:9,color:RAG.green.font}),alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,3,(up?'≥ ':'≤ ')+t.amber+'%',{fill:fill(RAG.amber.fill),font:afont({size:9,color:RAG.amber.font}),alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,4,(up?'< ':'> ')+t.amber+'%',{fill:fill(RAG.red.fill),font:afont({size:9,color:RAG.red.font}),alignment:{vertical:'middle',horizontal:'right'},border:true});
+    r++;
+  }
+  r++;
+  ws.getRow(r).height=16;ws.mergeCells(r,1,r,LAST);
+  setCell(ws,r,1,'Costs allocated % = manager costs tied to a named job, from the Manager P&L. A low figure means job coding is incomplete, so the per-job margins below it understate true cost.',{font:afont({size:8,italic:true,color:'FF555F6E'}),alignment:{vertical:'middle',horizontal:'left',indent:1}});r++;
+  ws.getRow(r).height=16;ws.mergeCells(r,1,r,LAST);
+  setCell(ws,r,1,'Largest job % flags revenue concentration — how exposed the month is to a single contract.',{font:afont({size:8,italic:true,color:'FF555F6E'}),alignment:{vertical:'middle',horizontal:'left',indent:1}});
+}
+
+function buildReviewSheet(wb,jobsByManager,managerPL,dateFrom,dateTo,singleManager){
+  const ws=wb.addWorksheet('\u{1F6A9} Review Flags',{views:[{state:'frozen',ySplit:4,showGridLines:false}]});
+  [13,30,20,16,58].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  const LAST=5;let r=1;
+
+  ws.getRow(r).height=34;ws.mergeCells(r,1,r,LAST);
+  setCell(ws,r,1,'J Randall Roofing Contractors Ltd — Month-End Review Flags',{fill:fill('1A1D23'),font:afont({size:15,bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  ws.getRow(r).height=20;ws.mergeCells(r,1,r,LAST);
+  const period=(dateFrom&&dateTo)?'Period: '+fmtDateDisplay(dateFrom)+' to '+fmtDateDisplay(dateTo):'Period: All transactions';
+  setCell(ws,r,1,period+'   |   Single-period consistency checks — these are questions to ask, not errors',{fill:fill('1A1D23'),font:afont({size:9,italic:true,color:'FF8A9AAB'}),alignment:{vertical:'middle',horizontal:'center'}});r++;
+  ws.getRow(r).height=4;for(let c=1;c<=LAST;c++)setCell(ws,r,c,'',{fill:fill('1A1D23')});r++;
+
+  ws.getRow(r).height=22;
+  ['Severity','Job / Manager','Check','Value','What to ask'].forEach((h,ci)=>{
+    setCell(ws,r,ci+1,h,{fill:fill('2C3244'),font:afont({bold:true,color:'FFFFFFFF'}),alignment:{vertical:'middle',horizontal:'left',indent:ci===0?1:0},border:true});
+  });r++;
+
+  const managers=(singleManager?[singleManager]:MANAGER_ORDER);
+  const stats=managers.map(m=>managerStats(jobsByManager,managerPL,m))
+    .filter(s=>s.jobCount>0||s.pl.income!==0||s.pl.costs!==0);
+  const allJobs=stats.flatMap(s=>s.jobs);
+  const totalInc=stats.reduce((t,s)=>t+s.pl.income,0);
+
+  // Benchmark job margins against the MEDIAN, not the mean. One dominant job
+  // pulls the mean towards itself, so the very job worth questioning ends up
+  // looking close to average and escapes the test.
+  // Only jobs with BOTH income and costs posted form the benchmark: a job with
+  // no costs coded shows a 100% margin and would drag the median up, masking
+  // the very outliers this test exists to surface.
+  const jobMargins=allJobs
+    .filter(j=>j.totals.income>FLAG_RULES.minJobValue&&(j.totals.income-j.totals.net)>0)
+    .map(j=>j.totals.net/j.totals.income*100)
+    .sort((a,b)=>a-b);
+  const midMargin=jobMargins.length
+    ?(jobMargins.length%2?jobMargins[(jobMargins.length-1)/2]
+      :(jobMargins[jobMargins.length/2-1]+jobMargins[jobMargins.length/2])/2)
+    :0;
+
+  const flags=[];
+  const F=FLAG_RULES;
+  for(const job of allJobs){
+    const inc=job.totals.income,cost=job.totals.income-job.totals.net,net=job.totals.net;
+    const margin=inc?net/inc*100:null;
+    if(cost>F.minJobValue&&inc<=0)
+      flags.push(['High',job.name,'Costs but no income',cost,'gbp','Costs of '+gbp(cost)+' with nothing invoiced. Is a valuation outstanding, or should this sit in WIP?']);
+    if(inc>F.minJobValue&&cost<=0)
+      flags.push(['High',job.name,'Income but no costs',inc,'gbp','Invoiced '+gbp(inc)+' with no costs coded. Supplier invoices or labour almost certainly unposted.']);
+    if(inc<0)
+      flags.push(['High',job.name,'Negative income',inc,'gbp','Net credit on an income account. Check for a credit note or a reversal posted to the wrong job.']);
+    if(cost<0)
+      flags.push(['High',job.name,'Negative cost',cost,'gbp','Net credit sitting on cost accounts — usually a supplier credit or a posting on the wrong side.']);
+    // cost>0 guard: a zero-cost job is already flagged above, no need to say it twice.
+    if(margin!==null&&cost>0&&inc>=F.marginOutlierMinInc&&margin>midMargin+F.marginOutlierPts)
+      flags.push(['High',job.name,'Margin far above the norm',margin,'pct','Margin is '+Math.round(margin-midMargin)+' points above the median job margin of '+midMargin.toFixed(1)+'%. Most often costs not yet posted rather than a genuinely strong job — check for unposted supplier invoices or subcontractor labour.']);
+    if(margin!==null&&margin<=F.lossMarginPct&&Math.abs(inc)>F.minJobValue)
+      flags.push(['Medium',job.name,'Loss-making job',margin,'pct','Running at a loss on '+gbp(inc)+' of income. Worth a look before it is reported to the client.']);
+    if(totalInc>0&&inc/totalInc*100>F.concentrationPct)
+      flags.push(['Medium',job.name,'Revenue concentration',inc/totalInc*100,'pct','This single job is '+(inc/totalInc*100).toFixed(1)+'% of the month’s income.']);
+  }
+  for(const s of stats){
+    if(s.pl.costs>0&&s.unallocCost/s.pl.costs*100>F.unallocCostPct)
+      flags.push(['Medium',s.mgr+' (manager)','Costs not allocated to a job',s.unallocCost/s.pl.costs*100,'pct',gbp(s.unallocCost)+' of costs are not coded to any job, so every job margin under '+s.mgr+' is overstated.']);
+  }
+
+  const order={High:0,Medium:1};
+  flags.sort((a,b)=>(order[a[0]]-order[b[0]])||String(a[1]).localeCompare(String(b[1])));
+
+  if(flags.length===0){
+    ws.getRow(r).height=24;ws.mergeCells(r,1,r,LAST);
+    setCell(ws,r,1,'No flags raised — every check passed for this period.',{fill:fill(RAG.green.fill),font:afont({bold:true,color:RAG.green.font}),alignment:{vertical:'middle',horizontal:'left',indent:1},border:true});
+    return;
+  }
+
+  flags.forEach(([sev,who,check,value,unit,ask],i)=>{
+    const rag=sev==='High'?RAG.red:RAG.amber;
+    const stripe=i%2===1?'F7F8FA':'FFFFFF';
+    ws.getRow(r).height=30;
+    setCell(ws,r,1,sev,{fill:fill(rag.fill),font:afont({bold:true,size:9,color:rag.font}),alignment:{vertical:'middle',horizontal:'left',indent:1},border:true});
+    setCell(ws,r,2,who,{fill:fill(stripe),font:afont({size:9}),alignment:{vertical:'middle',horizontal:'left',wrapText:true},border:true});
+    setCell(ws,r,3,check,{fill:fill(stripe),font:afont({size:9,bold:true}),alignment:{vertical:'middle',horizontal:'left',wrapText:true},border:true});
+    setCell(ws,r,4,value,{fill:fill(stripe),font:afont({size:9}),numFmt:unit==='pct'?PCT_FMT:CURR_FMT,alignment:{vertical:'middle',horizontal:'right'},border:true});
+    setCell(ws,r,5,ask,{fill:fill(stripe),font:afont({size:9,color:'FF333A47'}),alignment:{vertical:'middle',horizontal:'left',wrapText:true},border:true});
+    r++;
+  });
+}
+
+function gbp(n){return '\xa3'+Math.round(Math.abs(n)).toLocaleString('en-GB');}
+
 function buildJobSheet(wb,jobName,tabName,transactions,manager){
   const ws=wb.addWorksheet(tabName,{views:[{showGridLines:false}]});
   const mc=MC[manager]||MC.Unassigned;
@@ -867,8 +1088,8 @@ function buildJobSheet(wb,jobName,tabName,transactions,manager){
 }
 
 function newWorkbook(){const wb=new ExcelJS.Workbook();wb.creator='J Randall Roofing Report Generator';wb.created=wb.modified=new Date();return wb;}
-async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList){const wb=newWorkbook();buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
-async function buildManagerWorkbook(manager,jobs,managerPL,dateFrom,dateTo){const wb=newWorkbook();const jbm={};MANAGER_ORDER.forEach(m=>jbm[m]=m===manager?jobs:[]);buildSummarySheet(wb,jbm,managerPL,dateFrom,dateTo,manager);const sorted=[...jobs].sort((a,b)=>b.totals.net-a.totals.net);for(const job of sorted)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+async function buildFullWorkbook(jobsByManager,managerPL,dateFrom,dateTo,jobList){const wb=newWorkbook();buildSummarySheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);buildScorecardSheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);buildReviewSheet(wb,jobsByManager,managerPL,dateFrom,dateTo,null);for(const job of jobList)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
+async function buildManagerWorkbook(manager,jobs,managerPL,dateFrom,dateTo){const wb=newWorkbook();const jbm={};MANAGER_ORDER.forEach(m=>jbm[m]=m===manager?jobs:[]);buildSummarySheet(wb,jbm,managerPL,dateFrom,dateTo,manager);buildScorecardSheet(wb,jbm,managerPL,dateFrom,dateTo,manager);buildReviewSheet(wb,jbm,managerPL,dateFrom,dateTo,manager);const sorted=[...jobs].sort((a,b)=>b.totals.net-a.totals.net);for(const job of sorted)buildJobSheet(wb,job.name,job.tabName,job.transactions,job.manager);return blobUrl(await wb.xlsx.writeBuffer());}
 
 // ══════════════════════════════ GENERATE ══════════════════════════════
 async function generateReport(){
