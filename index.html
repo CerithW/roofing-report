@@ -158,7 +158,10 @@ const SCOPES='openid profile email offline_access accounting.reports.profitandlo
 const PROJECT_CATEGORY='Project';
 const MANAGER_CATEGORY='Manager';
 
-const MANAGER_ORDER=['Greg','Steff','Tyler','Shella','Jake','Charlotte','Unassigned'];
+// Must match the ACTIVE options on the "Manager" tracking category in Xero.
+// A manager missing from this list is silently dropped: their column in the
+// Manager P&L is never read, and their jobs fall into Unassigned.
+const MANAGER_ORDER=['Greg','Steff','Tyler','Shella','Jake','Charlotte','David','Unassigned'];
 const MC={
   Greg:      {dark:'0A3D5C',light:'D6EAF8',sub:'1B6494',btn:'#0A3D5C'},
   Steff:     {dark:'3B1F6B',light:'E8E0F5',sub:'6A3AB0',btn:'#3B1F6B'},
@@ -166,6 +169,7 @@ const MC={
   Shella:    {dark:'7A2D00',light:'F5E0CF',sub:'B84800',btn:'#7A2D00'},
   Jake:      {dark:'4A3000',light:'F5EDD0',sub:'7A5000',btn:'#4A3000'},
   Charlotte: {dark:'1A3A5C',light:'D0E3F5',sub:'2E6494',btn:'#1A3A5C'},
+  David:     {dark:'0F4C4C',light:'D5EDED',sub:'1F7A7A',btn:'#0F4C4C'},
   Unassigned:{dark:'444444',light:'EBEBEB',sub:'666666',btn:'#444444'}
 };
 const INCOME_KEYWORDS=['flat felt roofing','unconfirmed valuations'];
@@ -175,8 +179,11 @@ const INCOME_KEYWORDS=['flat felt roofing','unconfirmed valuations'];
 // higher number is better; `dir:'down'` means lower is better. Green is hit at
 // or beyond `green`, amber at or beyond `amber`, otherwise red.
 const KPI_TARGETS={
-  margin:      {green:20, amber:10, dir:'up',   label:'Net margin %',          fmt:'pct'},
-  lossJobsPct: {green:10, amber:25, dir:'down', label:'Loss-making jobs %',    fmt:'pct'},
+  // 30/20 is where two independent sources agree: the published commercial
+  // roofing gross-margin range (25-35%) and Randalls' own 12 months to Oct-26
+  // (median 22.8%, upper quartile 34.7%).
+  margin:      {green:30, amber:20, dir:'up',   label:'Margin %',              fmt:'pct'},
+  lossJobsPct: {green:15, amber:30, dir:'down', label:'Loss-making jobs %',    fmt:'pct'},
   allocPct:    {green:95, amber:85, dir:'up',   label:'Costs allocated to a job %', fmt:'pct'},
   concPct:     {green:40, amber:60, dir:'down', label:'Largest job as % of income', fmt:'pct'}
 };
@@ -192,6 +199,20 @@ function ragFor(key,value){
   if(t.dir==='up')  return value>=t.green?RAG.green:(value>=t.amber?RAG.amber:RAG.red);
   return value<=t.green?RAG.green:(value<=t.amber?RAG.amber:RAG.red);
 }
+
+// ── Trading baseline ────────────────────────────────────────────────────────
+// Randalls' own trailing-12-month position, from the Xero P&L. The monthly
+// numbers swing far too hard to be real trading (3.9% to 49.9% gross over the
+// same year), because valuations and supplier invoices land in different
+// months. So the honest comparator for any single month is the annual figure,
+// not the month before it. Refresh these yearly.
+const BASELINE={
+  periodLabel:'12 months to Oct 2026',
+  grossMarginPct:28.7,
+  netMarginPct:17.7,
+  monthlyGrossStdevPts:14.7,
+  deviationPts:15   // flag a month this far from the baseline gross margin
+};
 
 // ── Review flag thresholds ──────────────────────────────────────────────────
 // Single-period tests only: the app ingests one month at a time, so these look
@@ -1007,6 +1028,21 @@ function buildReviewSheet(wb,jobsByManager,managerPL,dateFrom,dateTo,singleManag
     if(totalInc>0&&inc/totalInc*100>F.concentrationPct)
       flags.push(['Medium',job.name,'Revenue concentration',inc/totalInc*100,'pct','This single job is '+(inc/totalInc*100).toFixed(1)+'% of the month’s income.']);
   }
+  // Whole-month sense check against the trailing-12-month baseline. This is the
+  // one test that would have caught August: 49.9% gross against a 28.7% norm.
+  const totalCost=stats.reduce((t,s)=>t+s.pl.costs,0);
+  if(totalInc>0){
+    const monthMargin=(totalInc-totalCost)/totalInc*100;
+    const gap=monthMargin-BASELINE.grossMarginPct;
+    if(Math.abs(gap)>BASELINE.deviationPts){
+      const high=gap>0;
+      flags.push(['High','Whole month',high?'Margin well above the annual norm':'Margin well below the annual norm',monthMargin,'pct',
+        'Month is '+Math.abs(Math.round(gap))+' points '+(high?'above':'below')+' the '+BASELINE.periodLabel+' average of '+BASELINE.grossMarginPct+'%. '+
+        (high?'Costs almost certainly unposted — check supplier invoices and CIS labour before this goes to the client.'
+             :'Either costs have landed without the matching valuation, or the month genuinely lost money. Check which before reporting it.')]);
+    }
+  }
+
   for(const s of stats){
     if(s.pl.costs>0&&s.unallocCost/s.pl.costs*100>F.unallocCostPct)
       flags.push(['Medium',s.mgr+' (manager)','Costs not allocated to a job',s.unallocCost/s.pl.costs*100,'pct',gbp(s.unallocCost)+' of costs are not coded to any job, so every job margin under '+s.mgr+' is overstated.']);
